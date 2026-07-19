@@ -5,9 +5,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/upendra7470/clip/internal/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/upendra7470/clip/internal/parser"
 )
 
 func TestFileType(t *testing.T) {

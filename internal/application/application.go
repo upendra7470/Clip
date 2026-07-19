@@ -3,6 +3,8 @@ package application
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/upendra7470/clip/internal/detect"
 	"github.com/upendra7470/clip/internal/parser"
@@ -35,13 +37,18 @@ func (app *Application) Extract(ctx context.Context, filePath string) error {
 	// Step 1: Detect file type
 	fileType, err := detect.Type(filePath)
 	if err != nil {
-		return fmt.Errorf("unsupported file type: %w", err)
+		// Extract file extension for better error message
+		ext := filepath.Ext(filePath)
+		if ext == "" {
+			ext = "unknown"
+		}
+		return fmt.Errorf("unsupported file type: %s\n\nsupported formats:\nPDF, DOCX, TXT, Markdown, PPTX, CSV, XLSX, JSON, XML, HTML, YAML, RTF, ODT, ODS, PPT", ext)
 	}
 
 	// Step 2: Lookup parser
 	p, err := app.reg.Lookup(fileType)
 	if err != nil {
-		return fmt.Errorf("parser not found: %w", err)
+		return fmt.Errorf("parser not found for file type: %s", fileType)
 	}
 
 	// Step 3: Parse document
@@ -53,7 +60,15 @@ func (app *Application) Extract(ctx context.Context, filePath string) error {
 
 	result, err := p.Parse(ctx, req)
 	if err != nil {
-		return fmt.Errorf("failed to extract text: %w", err)
+		// Check for permission errors
+		if os.IsPermission(err) {
+			return fmt.Errorf("cannot access file: %s\nreason: permission denied", filePath)
+		}
+		// Check for file not found errors
+		if os.IsNotExist(err) {
+			return fmt.Errorf("file not found: %s", filePath)
+		}
+		return fmt.Errorf("failed to extract text from file: %w", err)
 	}
 
 	// Step 4: Copy to clipboard

@@ -5,11 +5,13 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/upendra7470/clip/internal/application"
 	"github.com/upendra7470/clip/internal/clipboard"
 	"github.com/upendra7470/clip/internal/registry"
+	"github.com/upendra7470/clip/internal/resolver"
 	"github.com/upendra7470/clip/parsers/csv"
 	"github.com/upendra7470/clip/parsers/docx"
 	"github.com/upendra7470/clip/parsers/html"
@@ -156,6 +158,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Create resolver
+	fileResolver := resolver.New()
+
 	// Create clipboard adapter
 	clipboardAdapter := &realClipboard{}
 
@@ -180,8 +185,22 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	// Resolve file path using the resolver
+	resolvedPath, err := fileResolver.Resolve(ctx, filePath)
+	if err != nil {
+		// Handle special case for multiple files selection
+		if strings.HasPrefix(err.Error(), "selected:") {
+			// Extract the selected file path
+			selectedPath := strings.TrimPrefix(err.Error(), "selected:")
+			resolvedPath = selectedPath
+		} else {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
 	// Run the extraction pipeline
-	if err := app.Extract(ctx, filePath); err != nil {
+	if err := app.Extract(ctx, resolvedPath); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
