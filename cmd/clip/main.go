@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/upendra7470/clip/internal/application"
+	"github.com/upendra7470/clip/internal/clipboard"
 	"github.com/upendra7470/clip/internal/registry"
 	"github.com/upendra7470/clip/parsers/markdown"
 	"github.com/upendra7470/clip/parsers/pdf"
@@ -59,8 +60,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create application
-	app := application.New(reg)
+	// Create clipboard adapter
+	clipboardAdapter := &realClipboard{}
+
+	// Create application with registry and clipboard
+	app := application.New(reg, clipboardAdapter)
 
 	// Handle file argument
 	if len(os.Args) == 1 {
@@ -88,6 +92,13 @@ func main() {
 
 	// Success
 	fmt.Println("✓ Copied to clipboard.")
+}
+
+// realClipboard adapts the clipboard package to the application.Clipboard interface.
+type realClipboard struct{}
+
+func (r *realClipboard) Copy(text string) error {
+	return clipboard.Copy(text)
 }
 
 func showHelp() {

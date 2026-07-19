@@ -10,6 +10,18 @@ import (
 	"github.com/upendra7470/clip/internal/registry"
 )
 
+// mockClipboard is a test implementation of Clipboard interface.
+type mockClipboard struct {
+	copyFunc func(text string) error
+}
+
+func (m *mockClipboard) Copy(text string) error {
+	if m.copyFunc != nil {
+		return m.copyFunc(text)
+	}
+	return nil
+}
+
 // mockParser is a test parser that can simulate different behaviors.
 type mockParser struct {
 	fileType filetype.FileType
@@ -40,7 +52,10 @@ func TestExtractSuccess(t *testing.T) {
 		t.Fatalf("Failed to register mock parser: %v", err)
 	}
 
-	app := New(reg)
+	// Create mock clipboard
+	mockClip := &mockClipboard{}
+
+	app := New(reg, mockClip)
 
 	// Test successful extraction
 	err := app.Extract(context.Background(), "test.txt")
@@ -51,7 +66,8 @@ func TestExtractSuccess(t *testing.T) {
 
 func TestExtractUnsupportedFileType(t *testing.T) {
 	reg := registry.New()
-	app := New(reg)
+	mockClip := &mockClipboard{}
+	app := New(reg, mockClip)
 
 	// Test unsupported file type
 	err := app.Extract(context.Background(), "file.xyz")
@@ -67,7 +83,8 @@ func TestExtractUnsupportedFileType(t *testing.T) {
 func TestExtractParserNotFound(t *testing.T) {
 	// Create registry but don't register any parsers
 	reg := registry.New()
-	app := New(reg)
+	mockClip := &mockClipboard{}
+	app := New(reg, mockClip)
 
 	// Test parser not found (even though file type is supported)
 	err := app.Extract(context.Background(), "test.txt")
@@ -93,7 +110,8 @@ func TestExtractParserError(t *testing.T) {
 		t.Fatalf("Failed to register mock parser: %v", err)
 	}
 
-	app := New(reg)
+	mockClip := &mockClipboard{}
+	app := New(reg, mockClip)
 
 	// Test parser error
 	err := app.Extract(context.Background(), "test.txt")

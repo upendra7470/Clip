@@ -4,21 +4,28 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/upendra7470/clip/internal/clipboard"
 	"github.com/upendra7470/clip/internal/detect"
 	"github.com/upendra7470/clip/internal/parser"
 	"github.com/upendra7470/clip/internal/registry"
 )
 
-// Application handles the document extraction workflow.
-type Application struct {
-	reg *registry.Registry
+// Clipboard defines the interface for clipboard operations.
+type Clipboard interface {
+	// Copy copies the given text to the system clipboard.
+	Copy(text string) error
 }
 
-// New creates a new Application with the given registry.
-func New(reg *registry.Registry) *Application {
+// Application handles the document extraction workflow.
+type Application struct {
+	reg       *registry.Registry
+	clipboard Clipboard
+}
+
+// New creates a new Application with the given registry and clipboard.
+func New(reg *registry.Registry, clipboard Clipboard) *Application {
 	return &Application{
-		reg: reg,
+		reg:       reg,
+		clipboard: clipboard,
 	}
 }
 
@@ -50,7 +57,7 @@ func (app *Application) Extract(ctx context.Context, filePath string) error {
 	}
 
 	// Step 4: Copy to clipboard
-	if err := clipboard.Copy(result.Text); err != nil {
+	if err := app.clipboard.Copy(result.Text); err != nil {
 		return fmt.Errorf("failed to copy to clipboard: %w", err)
 	}
 
