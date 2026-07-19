@@ -15,6 +15,7 @@ import (
 	"github.com/upendra7470/clip/parsers/html"
 	"github.com/upendra7470/clip/parsers/json"
 	"github.com/upendra7470/clip/parsers/markdown"
+	"github.com/upendra7470/clip/parsers/ods"
 	"github.com/upendra7470/clip/parsers/odt"
 	"github.com/upendra7470/clip/parsers/pdf"
 	"github.com/upendra7470/clip/parsers/rtf"
@@ -129,6 +130,13 @@ func main() {
 	odtParser := &odt.Parser{}
 	if err := reg.Register(odtParser.FileType(), odtParser); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to register ODT parser: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Register ODS parser
+	odsParser := &ods.Parser{}
+	if err := reg.Register(odsParser.FileType(), odsParser); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to register ODS parser: %v\n", err)
 		os.Exit(1)
 	}
 
