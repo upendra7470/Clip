@@ -12,6 +12,7 @@ import (
 	"github.com/upendra7470/clip/internal/registry"
 	"github.com/upendra7470/clip/parsers/csv"
 	"github.com/upendra7470/clip/parsers/docx"
+	"github.com/upendra7470/clip/parsers/html"
 	"github.com/upendra7470/clip/parsers/json"
 	"github.com/upendra7470/clip/parsers/markdown"
 	"github.com/upendra7470/clip/parsers/pdf"
@@ -97,6 +98,13 @@ func main() {
 	xmlParser := &xml.Parser{}
 	if err := reg.Register(xmlParser.FileType(), xmlParser); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to register XML parser: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Register HTML parser
+	htmlParser := &html.Parser{}
+	if err := reg.Register(htmlParser.FileType(), htmlParser); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to register HTML parser: %v\n", err)
 		os.Exit(1)
 	}
 
