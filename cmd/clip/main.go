@@ -9,6 +9,7 @@ import (
 
 	"github.com/upendra7470/clip/internal/application"
 	"github.com/upendra7470/clip/internal/registry"
+	"github.com/upendra7470/clip/parsers/markdown"
 	"github.com/upendra7470/clip/parsers/txt"
 )
 
@@ -35,9 +36,18 @@ func main() {
 
 	// Set up the parser registry
 	reg := registry.New()
+
+	// Register TXT parser
 	txtParser := &txt.Parser{}
 	if err := reg.Register(txtParser.FileType(), txtParser); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to register TXT parser: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Register Markdown parser
+	markdownParser := &markdown.Parser{}
+	if err := reg.Register(markdownParser.FileType(), markdownParser); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to register Markdown parser: %v\n", err)
 		os.Exit(1)
 	}
 
