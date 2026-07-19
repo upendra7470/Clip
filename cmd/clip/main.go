@@ -17,6 +17,7 @@ import (
 	"github.com/upendra7470/clip/parsers/pdf"
 	"github.com/upendra7470/clip/parsers/txt"
 	"github.com/upendra7470/clip/parsers/xlsx"
+	"github.com/upendra7470/clip/parsers/xml"
 )
 
 const version = "dev"
@@ -89,6 +90,13 @@ func main() {
 	jsonParser := &json.Parser{}
 	if err := reg.Register(jsonParser.FileType(), jsonParser); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to register JSON parser: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Register XML parser
+	xmlParser := &xml.Parser{}
+	if err := reg.Register(xmlParser.FileType(), xmlParser); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to register XML parser: %v\n", err)
 		os.Exit(1)
 	}
 
