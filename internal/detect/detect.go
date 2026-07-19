@@ -55,6 +55,8 @@ func Type(path string) (filetype.FileType, error) {
 		return filetype.FileTypeXML, nil
 	case "html", "htm":
 		return filetype.FileTypeHTML, nil
+	case "yaml", "yml":
+		return filetype.FileTypeYAML, nil
 	default:
 		return "", fmt.Errorf("unsupported file extension: .%s", ext)
 	}

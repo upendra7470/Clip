@@ -22,4 +22,5 @@ const (
 	FileTypeJSON     FileType = "JSON"
 	FileTypeXML      FileType = "XML"
 	FileTypeHTML     FileType = "HTML"
+	FileTypeYAML     FileType = "YAML"
 )

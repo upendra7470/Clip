@@ -19,6 +19,7 @@ import (
 	"github.com/upendra7470/clip/parsers/txt"
 	"github.com/upendra7470/clip/parsers/xlsx"
 	"github.com/upendra7470/clip/parsers/xml"
+	"github.com/upendra7470/clip/parsers/yaml"
 )
 
 const version = "dev"
@@ -105,6 +106,13 @@ func main() {
 	htmlParser := &html.Parser{}
 	if err := reg.Register(htmlParser.FileType(), htmlParser); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to register HTML parser: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Register YAML parser
+	yamlParser := &yaml.Parser{}
+	if err := reg.Register(yamlParser.FileType(), yamlParser); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to register YAML parser: %v\n", err)
 		os.Exit(1)
 	}
 
