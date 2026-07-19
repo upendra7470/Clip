@@ -10,6 +10,7 @@ import (
 	"github.com/upendra7470/clip/internal/application"
 	"github.com/upendra7470/clip/internal/clipboard"
 	"github.com/upendra7470/clip/internal/registry"
+	"github.com/upendra7470/clip/parsers/csv"
 	"github.com/upendra7470/clip/parsers/docx"
 	"github.com/upendra7470/clip/parsers/markdown"
 	"github.com/upendra7470/clip/parsers/pdf"
@@ -65,6 +66,13 @@ func main() {
 	docxParser := &docx.Parser{}
 	if err := reg.Register(docxParser.FileType(), docxParser); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to register DOCX parser: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Register CSV parser
+	csvParser := &csv.Parser{}
+	if err := reg.Register(csvParser.FileType(), csvParser); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to register CSV parser: %v\n", err)
 		os.Exit(1)
 	}
 
