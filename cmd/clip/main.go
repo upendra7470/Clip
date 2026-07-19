@@ -12,6 +12,7 @@ import (
 	"github.com/upendra7470/clip/internal/registry"
 	"github.com/upendra7470/clip/parsers/csv"
 	"github.com/upendra7470/clip/parsers/docx"
+	"github.com/upendra7470/clip/parsers/json"
 	"github.com/upendra7470/clip/parsers/markdown"
 	"github.com/upendra7470/clip/parsers/pdf"
 	"github.com/upendra7470/clip/parsers/txt"
@@ -81,6 +82,13 @@ func main() {
 	xlsxParser := &xlsx.Parser{}
 	if err := reg.Register(xlsxParser.FileType(), xlsxParser); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to register XLSX parser: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Register JSON parser
+	jsonParser := &json.Parser{}
+	if err := reg.Register(jsonParser.FileType(), jsonParser); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to register JSON parser: %v\n", err)
 		os.Exit(1)
 	}
 

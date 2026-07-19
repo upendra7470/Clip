@@ -1,0 +1,171 @@
+package json
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/upendra7470/clip/internal/filetype"
+	"github.com/upendra7470/clip/internal/parser"
+)
+
+// JSONParserError represents an error that occurs during JSON parsing.
+type JSONParserError struct {
+	message string
+	cause   error
+}
+
+func (e *JSONParserError) Error() string {
+	if e.message == "" {
+		return "JSON parser error"
+	}
+	return e.message
+}
+
+func (e *JSONParserError) Unwrap() error {
+	return e.cause
+}
+
+// Parser implements the parser.Parser interface for JSON files.
+type Parser struct{}
+
+// Parse reads a JSON file and extracts readable text representation.
+func (p *Parser) Parse(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
+	// Read the file content
+	content, err := os.ReadFile(req.File)
+	if err != nil {
+		return parser.ParseResult{}, wrapError("failed to read JSON file", err)
+	}
+
+	// Check if file is empty
+	if len(content) == 0 {
+		return parser.ParseResult{}, wrapError("empty JSON file", nil)
+	}
+
+	// Validate JSON syntax
+	var jsonData interface{}
+	if err := json.Unmarshal(content, &jsonData); err != nil {
+		return parser.ParseResult{}, wrapError("invalid JSON syntax", err)
+	}
+
+	// Extract readable text from JSON
+	text := extractTextFromJSON(jsonData)
+
+	if text == "" {
+		return parser.ParseResult{}, wrapError("no readable content found in JSON", nil)
+	}
+
+	return parser.ParseResult{
+		Text: text,
+	}, nil
+}
+
+// FileType returns the file type this parser handles.
+func (p *Parser) FileType() filetype.FileType {
+	return filetype.FileTypeJSON
+}
+
+// extractTextFromJSON extracts readable text from JSON data structure
+func extractTextFromJSON(data interface{}) string {
+	var result strings.Builder
+
+	switch v := data.(type) {
+	case map[string]interface{}:
+		extractFromObject(v, &result, "")
+	case []interface{}:
+		extractFromArray(v, &result)
+	default:
+		// Handle primitive values
+		if s, ok := v.(string); ok {
+			result.WriteString(s)
+		}
+	}
+
+	return strings.TrimSpace(result.String())
+}
+
+// extractFromObject extracts text from JSON object
+func extractFromObject(obj map[string]interface{}, result *strings.Builder, indent string) {
+	first := true
+	for key, value := range obj {
+		if !first && result.Len() > 0 {
+			result.WriteString("\n")
+		}
+		first = false
+
+		result.WriteString(indent + key + ": ")
+
+		switch v := value.(type) {
+		case string:
+			result.WriteString(v)
+		case float64:
+			// Handle numbers (JSON numbers become float64)
+			if v == float64(int(v)) {
+				fmt.Fprintf(result, "%d", int(v))
+			} else {
+				fmt.Fprintf(result, "%f", v)
+			}
+		case bool:
+			fmt.Fprintf(result, "%t", v)
+		case nil:
+			result.WriteString("null")
+		case map[string]interface{}:
+			// Nested object - recurse with indentation
+			extractFromObject(v, result, indent+"  ")
+		case []interface{}:
+			// Array - handle each element
+			extractFromArray(v, result)
+		default:
+			result.WriteString(fmt.Sprintf("%v", v))
+		}
+	}
+}
+
+// extractFromArray extracts text from JSON array
+func extractFromArray(arr []interface{}, result *strings.Builder) {
+	for i, item := range arr {
+		if i > 0 {
+			result.WriteString("\n")
+		}
+
+		switch v := item.(type) {
+		case string:
+			result.WriteString(v)
+		case float64:
+			// Handle numbers
+			if v == float64(int(v)) {
+				fmt.Fprintf(result, "%d", int(v))
+			} else {
+				fmt.Fprintf(result, "%f", v)
+			}
+		case bool:
+			fmt.Fprintf(result, "%t", v)
+		case nil:
+			result.WriteString("null")
+		case map[string]interface{}:
+			// Nested object in array
+			extractFromObject(v, result, "")
+		case []interface{}:
+			// Nested array
+			extractFromArray(v, result)
+		default:
+			result.WriteString(fmt.Sprintf("%v", v))
+		}
+	}
+}
+
+// wrapError wraps an error with additional context.
+func wrapError(message string, err error) error {
+	if err == nil {
+		return &JSONParserError{
+			message: message,
+			cause:   nil,
+		}
+	}
+	return &JSONParserError{
+		message: message,
+		cause:   err,
+	}
+}
