@@ -73,7 +73,7 @@ func TestParseXLSXWithoutWorksheets(t *testing.T) {
 	filePath := filepath.Join(tempDir, "no_worksheets.xlsx")
 
 	// Create minimal XLSX structure without worksheets
-	xlsxContent := createMinimalXLSX([][]string{})
+	xlsxContent := createXLSXWithoutWorksheets()
 	err := os.WriteFile(filePath, xlsxContent, 0644)
 	if err != nil {
 		t.Fatalf("Failed to create XLSX test file: %v", err)
@@ -351,6 +351,52 @@ func createMinimalXLSX(data [][]string) []byte {
 
 	f.Write([]byte(`</sheetData>
 </worksheet>`))
+
+	writer.Close()
+	return buf.Bytes()
+}
+
+// createXLSXWithoutWorksheets creates an XLSX file without any worksheet files.
+func createXLSXWithoutWorksheets() []byte {
+	buf := new(bytes.Buffer)
+	writer := zip.NewWriter(buf)
+
+	// Add [Content_Types].xml (without worksheet references)
+	f, _ := writer.Create("[Content_Types].xml")
+	f.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+	<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+	<Default Extension="xml" ContentType="application/xml"/>
+	<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+	<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
+</Types>`))
+
+	// Add _rels/.rels
+	f, _ = writer.Create("_rels/.rels")
+	f.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+	<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`))
+
+	// Add xl/_rels/workbook.xml.rels (without worksheet references)
+	f, _ = writer.Create("xl/_rels/workbook.xml.rels")
+	f.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+	<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
+</Relationships>`))
+
+	// Add xl/workbook.xml (without sheets)
+	f, _ = writer.Create("xl/workbook.xml")
+	f.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+	<sheets>
+	</sheets>
+</workbook>`))
+
+	// Add xl/sharedStrings.xml
+	f, _ = writer.Create("xl/sharedStrings.xml")
+	f.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="0" uniqueCount="0"/>`))
 
 	writer.Close()
 	return buf.Bytes()

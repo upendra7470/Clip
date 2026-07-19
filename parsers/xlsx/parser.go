@@ -155,7 +155,7 @@ func parseWorksheet(zipFile *zip.File, sharedStrings []string) (string, error) {
 
 	var result strings.Builder
 	decoder := xml.NewDecoder(strings.NewReader(string(content)))
-	var inRow, inC bool
+	var inRow, inC, inIS, inT bool
 	var currentRow strings.Builder
 	var currentCell strings.Builder
 	var cellType string
@@ -184,20 +184,24 @@ func parseWorksheet(zipFile *zip.File, sharedStrings []string) (string, error) {
 						cellType = attr.Value
 					}
 				}
+			} else if t.Name.Local == "is" && inC {
+				inIS = true
+			} else if t.Name.Local == "t" && (inIS || inC) {
+				inT = true
 			} else if t.Name.Local == "v" && inC {
-				// Cell value
-				for _, attr := range t.Attr {
-					if attr.Name.Local == "t" {
-						cellType = attr.Value
-					}
-				}
+				// Cell value - only relevant for non-inline-string cells
+				// For inline strings, we get the value from <t> elements
 			}
 		case xml.CharData:
-			if inC {
+			if inT {
 				currentCell.Write(t)
 			}
 		case xml.EndElement:
-			if t.Name.Local == "v" && inC {
+			if t.Name.Local == "t" && inT {
+				inT = false
+			} else if t.Name.Local == "is" && inIS {
+				inIS = false
+			} else if t.Name.Local == "c" && inC {
 				// Process cell value based on type
 				cellValue := strings.TrimSpace(currentCell.String())
 				if cellType == "s" {
@@ -205,19 +209,30 @@ func parseWorksheet(zipFile *zip.File, sharedStrings []string) (string, error) {
 					if idx, err := strconv.Atoi(cellValue); err == nil && idx < len(sharedStrings) {
 						cellValue = sharedStrings[idx]
 					}
+				} else if cellType == "inlineStr" {
+					// Inline string - value is already in currentCell from <t> element
+				} else {
+					// Numeric or other types - value would be in <v> element
+					// But for inline strings, we already have the value
 				}
-				if currentRow.Len() > 0 {
-					currentRow.WriteString(", ")
+
+				if cellValue != "" { // Only add non-empty cells
+					if currentRow.Len() > 0 {
+						currentRow.WriteString(", ")
+					}
+					currentRow.WriteString(cellValue)
 				}
-				currentRow.WriteString(cellValue)
-			} else if t.Name.Local == "c" && inC {
+
 				inC = false
+				inIS = false
 			} else if t.Name.Local == "row" && inRow {
 				inRow = false
-				if result.Len() > 0 {
-					result.WriteString("\n")
+				if currentRow.Len() > 0 { // Only add non-empty rows
+					if result.Len() > 0 {
+						result.WriteString("\n")
+					}
+					result.WriteString(currentRow.String())
 				}
-				result.WriteString(currentRow.String())
 			}
 		}
 	}
