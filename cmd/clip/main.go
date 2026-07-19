@@ -15,6 +15,7 @@ import (
 	"github.com/upendra7470/clip/parsers/markdown"
 	"github.com/upendra7470/clip/parsers/pdf"
 	"github.com/upendra7470/clip/parsers/txt"
+	"github.com/upendra7470/clip/parsers/xlsx"
 )
 
 const version = "dev"
@@ -73,6 +74,13 @@ func main() {
 	csvParser := &csv.Parser{}
 	if err := reg.Register(csvParser.FileType(), csvParser); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to register CSV parser: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Register XLSX parser
+	xlsxParser := &xlsx.Parser{}
+	if err := reg.Register(xlsxParser.FileType(), xlsxParser); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to register XLSX parser: %v\n", err)
 		os.Exit(1)
 	}
 
