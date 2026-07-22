@@ -164,7 +164,21 @@ func (r *Resolver) resolveFilename(ctx context.Context, filename string) (string
 			return currentDirMatch, nil
 		}
 
-		// If no current directory match, ask user to select
+		// If no current directory match, prioritize exact path matches
+		var exactPathMatch string
+		for _, file := range foundFiles {
+			if filepath.Base(file) == filename {
+				exactPathMatch = file
+				break
+			}
+		}
+
+		if exactPathMatch != "" {
+			// Return the exact path match
+			return exactPathMatch, nil
+		}
+
+		// If no current directory or exact path match, ask user to select
 		return "", r.handleMultipleFiles(filename, foundFiles)
 	}
 }

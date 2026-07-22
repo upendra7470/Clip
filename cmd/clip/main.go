@@ -248,7 +248,14 @@ func main() {
 			rangeUnit = rangeParser.GetRangeUnit()
 		}
 
-		fmt.Printf("✓ Extracted %s %d-%d successfully\n", rangeUnit, rangeObj.Start, rangeObj.End)
+		// Handle special range formats
+		if rangeObj.Start == -1 {
+			fmt.Printf("✓ Extracted from start to %s %d successfully\n", rangeUnit, rangeObj.End)
+		} else if rangeObj.End == -1 {
+			fmt.Printf("✓ Extracted from %s %d to end successfully\n", rangeUnit, rangeObj.Start)
+		} else {
+			fmt.Printf("✓ Extracted %s %d-%d successfully\n", rangeUnit, rangeObj.Start, rangeObj.End)
+		}
 	} else {
 		fmt.Println("✓ Extracted text successfully")
 	}

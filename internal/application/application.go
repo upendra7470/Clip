@@ -90,6 +90,16 @@ func (app *Application) ExtractWithRange(ctx context.Context, filePath string, r
 				end = -1
 			}
 
+			// Get total units to determine the actual end
+			// For now, we'll pass the range as-is and let the parser handle it
+			// Use -1 to indicate "to end" to the parser
+			if end == -1 {
+				// Get total units to determine the actual end
+				// For now, we'll pass the range as-is and let the parser handle it
+				// Use -1 to indicate "to end" to the parser
+				end = -1
+			}
+
 			result, parseErr = rangeParser.ParseRange(ctx, req, start, end)
 			if parseErr != nil {
 				err = parseErr
