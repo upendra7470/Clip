@@ -3,6 +3,7 @@ package xml
 import (
 	"context"
 	"encoding/xml"
+	"fmt"
 	"os"
 	"strings"
 
@@ -27,7 +28,7 @@ func (e *XMLParserError) Unwrap() error {
 	return e.cause
 }
 
-// Parser implements the parser.Parser interface for XML files.
+// Parser implements the parser.Parser and parser.RangeParser interfaces for XML files.
 type Parser struct{}
 
 // Parse reads an XML file and extracts readable text content.
@@ -70,6 +71,68 @@ func (p *Parser) FileType() filetype.FileType {
 	return filetype.FileTypeXML
 }
 
+// GetRangeUnit returns the unit type that this parser uses for ranges.
+func (p *Parser) GetRangeUnit() string {
+	return "text blocks"
+}
+
+// ParseRange extracts text from a specific text block range in an XML file.
+func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start, end int) (parser.ParseResult, error) {
+	// Validate text block range
+	if start < 1 || end < 1 {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("text block numbers must start from 1, got %d-%d", start, end), nil)
+	}
+	if end < start {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid text block range: start block must not be greater than end block (got %d-%d)", start, end), nil)
+	}
+
+	// Read the file content
+	content, err := os.ReadFile(req.File)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return parser.ParseResult{}, wrapError("Could not open XML file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
+		}
+		if os.IsPermission(err) {
+			return parser.ParseResult{}, wrapError("Could not open XML file:\n"+req.File+"\n\nReason:\npermission denied", err)
+		}
+		return parser.ParseResult{}, wrapError("Could not open XML file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
+	}
+
+	// Check if file is empty
+	if len(content) == 0 {
+		return parser.ParseResult{}, wrapError("empty XML file", nil)
+	}
+
+	// Validate XML syntax and extract text with block tracking
+	text, totalBlocks, err := extractTextFromXMLWithBlocks(content)
+	if err != nil {
+		return parser.ParseResult{}, wrapError("invalid XML syntax", err)
+	}
+
+	// Validate range against actual block count
+	if start > totalBlocks || end > totalBlocks {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("requested text block range exceeds document block count (document has %d blocks, requested %d-%d)", totalBlocks, start, end), nil)
+	}
+
+	// Split text into blocks and extract requested range
+	blocks := strings.Split(text, "\n")
+	var result strings.Builder
+	for i := start - 1; i < end && i < len(blocks); i++ {
+		if i > start-1 {
+			result.WriteString("\n")
+		}
+		result.WriteString(blocks[i])
+	}
+
+	if result.Len() == 0 {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("no text content found in blocks %d-%d", start, end), nil)
+	}
+
+	return parser.ParseResult{
+		Text: result.String(),
+	}, nil
+}
+
 // extractTextFromXML extracts readable text from XML content
 func extractTextFromXML(content []byte) (string, error) {
 	var result strings.Builder
@@ -101,6 +164,41 @@ func extractTextFromXML(content []byte) (string, error) {
 	}
 
 	return result.String(), nil
+}
+
+// extractTextFromXMLWithBlocks extracts readable text from XML content with block tracking.
+func extractTextFromXMLWithBlocks(content []byte) (string, int, error) {
+	var result strings.Builder
+	decoder := xml.NewDecoder(strings.NewReader(string(content)))
+	var blockCount int
+
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			if err.Error() == "EOF" {
+				break // End of XML document
+			}
+			return "", 0, err
+		}
+
+		switch t := token.(type) {
+		case xml.CharData:
+			// Extract text content, trim excessive whitespace but preserve meaningful content
+			text := strings.TrimSpace(string(t))
+			if text != "" {
+				if result.Len() > 0 {
+					result.WriteString("\n")
+				}
+				result.WriteString(text)
+				blockCount++
+			}
+		case xml.StartElement, xml.EndElement, xml.Comment, xml.ProcInst, xml.Directive:
+			// Ignore elements, attributes, comments, processing instructions
+			continue
+		}
+	}
+
+	return result.String(), blockCount, nil
 }
 
 // wrapError wraps an error with additional context.

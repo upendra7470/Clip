@@ -71,7 +71,26 @@ func (app *Application) ExtractWithRange(ctx context.Context, filePath string, r
 		if rangeParser, ok := parserObj.(parser.RangeParser); ok {
 			// Use range-specific parsing if available
 			var parseErr error
-			result, parseErr = rangeParser.ParseRange(ctx, req, rangeObj.Start, rangeObj.End)
+			// Handle special range formats
+			start := rangeObj.Start
+			end := rangeObj.End
+
+			// If start is -1, it means "from start" (e.g., -10)
+			if start == -1 {
+				// Get total units to determine the actual start
+				// For now, we'll pass the range as-is and let the parser handle it
+				start = 1 // Start from beginning
+			}
+
+			// If end is -1, it means "to end" (e.g., 5-)
+			if end == -1 {
+				// Get total units to determine the actual end
+				// For now, we'll pass the range as-is and let the parser handle it
+				// Use -1 to indicate "to end" to the parser
+				end = -1
+			}
+
+			result, parseErr = rangeParser.ParseRange(ctx, req, start, end)
 			if parseErr != nil {
 				err = parseErr
 			}

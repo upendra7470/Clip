@@ -76,10 +76,14 @@ func (p *Parser) GetRangeUnit() string {
 // ParseRange extracts text from a specific line range in a text file.
 func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start, end int) (parser.ParseResult, error) {
 	// Validate line range
-	if start < 1 || end < 1 {
+	if start < 1 {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("line numbers must start from 1, got %d-%d", start, end), nil)
 	}
-	if end < start {
+	// Allow end to be -1 (indicating "to end")
+	if end != -1 && end < 1 {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("line numbers must start from 1, got %d-%d", start, end), nil)
+	}
+	if end != -1 && end < start {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid line range: start line must not be greater than end line (got %d-%d)", start, end), nil)
 	}
 
@@ -104,7 +108,14 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	lines := strings.Split(string(content), "\n")
 
 	// Validate range against actual line count
-	if start > len(lines) || end > len(lines) {
+	if start > len(lines) {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("requested line range exceeds file line count (file has %d lines, requested %d-%d)", len(lines), start, end), nil)
+	}
+
+	// If end is -1, it means "to end"
+	if end == -1 {
+		end = len(lines)
+	} else if end > len(lines) {
 		return parser.ParseResult{}, wrapError(fmt.Sprintf("requested line range exceeds file line count (file has %d lines, requested %d-%d)", len(lines), start, end), nil)
 	}
 

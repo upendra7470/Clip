@@ -2,6 +2,7 @@ package html
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 
@@ -26,7 +27,7 @@ func (e *HTMLParserError) Unwrap() error {
 	return e.cause
 }
 
-// Parser implements the parser.Parser interface for HTML files.
+// Parser implements the parser.Parser and parser.RangeParser interfaces for HTML files.
 type Parser struct{}
 
 // Parse reads an HTML file and extracts readable text content.
@@ -67,6 +68,81 @@ func (p *Parser) Parse(ctx context.Context, req parser.ParseRequest) (parser.Par
 // FileType returns the file type this parser handles.
 func (p *Parser) FileType() filetype.FileType {
 	return filetype.FileTypeHTML
+}
+
+// GetRangeUnit returns the unit type that this parser uses for ranges.
+func (p *Parser) GetRangeUnit() string {
+	return "text blocks"
+}
+
+// ParseRange extracts text from a specific text block range in an HTML file.
+func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start, end int) (parser.ParseResult, error) {
+	// Validate text block range
+	if start < 1 || end < 1 {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("text block numbers must start from 1, got %d-%d", start, end), nil)
+	}
+	if end < start {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid text block range: start block must not be greater than end block (got %d-%d)", start, end), nil)
+	}
+
+	// Read the file content
+	content, err := os.ReadFile(req.File)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return parser.ParseResult{}, wrapError("Could not open HTML file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
+		}
+		if os.IsPermission(err) {
+			return parser.ParseResult{}, wrapError("Could not open HTML file:\n"+req.File+"\n\nReason:\npermission denied", err)
+		}
+		return parser.ParseResult{}, wrapError("Could not open HTML file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
+	}
+
+	// Check if file is empty
+	if len(content) == 0 {
+		return parser.ParseResult{}, wrapError("empty HTML file", nil)
+	}
+
+	// Extract text from HTML and split into blocks
+	text, err := extractTextFromHTML(string(content))
+	if err != nil {
+		return parser.ParseResult{}, wrapError("failed to extract text from HTML", err)
+	}
+
+	// Check if we extracted any meaningful text
+	if strings.TrimSpace(text) == "" {
+		return parser.ParseResult{}, wrapError("no readable content found in HTML", nil)
+	}
+
+	// Split text into blocks (paragraphs separated by double newlines)
+	blocks := strings.Split(text, "\n\n")
+	var nonEmptyBlocks []string
+	for _, block := range blocks {
+		if strings.TrimSpace(block) != "" {
+			nonEmptyBlocks = append(nonEmptyBlocks, block)
+		}
+	}
+
+	// Validate range against actual block count
+	if start > len(nonEmptyBlocks) || end > len(nonEmptyBlocks) {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("requested text block range exceeds document block count (document has %d blocks, requested %d-%d)", len(nonEmptyBlocks), start, end), nil)
+	}
+
+	// Extract only the requested text block range
+	var result strings.Builder
+	for i := start - 1; i < end && i < len(nonEmptyBlocks); i++ {
+		if i > start-1 {
+			result.WriteString("\n\n")
+		}
+		result.WriteString(nonEmptyBlocks[i])
+	}
+
+	if result.Len() == 0 {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("no text content found in blocks %d-%d", start, end), nil)
+	}
+
+	return parser.ParseResult{
+		Text: result.String(),
+	}, nil
 }
 
 // extractTextFromHTML extracts readable text from HTML content
