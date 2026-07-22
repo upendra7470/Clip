@@ -725,3 +725,173 @@ func TestCLIInvalidRange(t *testing.T) {
 		t.Errorf("Error output should contain range validation message, got: %s", outputStr)
 	}
 }
+
+func TestCLISmartFilenameResolutionWithRange(t *testing.T) {
+	// Build the CLI first
+	cmd := exec.Command("go", "build", "-o", "../clip", "../cmd/clip")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Failed to build CLI: %v\n%s", err, output)
+	}
+	defer os.Remove("../clip")
+
+	// Create a test file with spaces and mixed case - need to create a valid DOCX file
+	testFile := "The Brain.docx"
+
+	// Create a temporary directory for DOCX content
+	tempDir, err := os.MkdirTemp("", "docx_content")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Create word/document.xml
+	wordDir := filepath.Join(tempDir, "word")
+	err = os.MkdirAll(wordDir, 0755)
+	if err != nil {
+		t.Fatalf("Failed to create word directory: %v", err)
+	}
+
+	documentXML := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:r>
+        <w:t>Paragraph 1: Hello, this is a test file for smart filename resolution with range.</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:r>
+        <w:t>Paragraph 2: This is the second paragraph for range extraction testing.</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:r>
+        <w:t>Paragraph 3: This is the third paragraph to test range functionality.</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:r>
+        <w:t>Paragraph 4: Final paragraph for comprehensive testing.</w:t>
+      </w:r>
+    </w:p>
+  </w:body>
+</w:document>`
+
+	err = os.WriteFile(filepath.Join(wordDir, "document.xml"), []byte(documentXML), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create document.xml: %v", err)
+	}
+
+	// Create the DOCX file as a ZIP archive
+	zipFile, err := os.Create(testFile)
+	if err != nil {
+		t.Fatalf("Failed to create DOCX file: %v", err)
+	}
+
+	zipWriter := zip.NewWriter(zipFile)
+
+	// Add document.xml to the ZIP
+	xmlFile, err := os.Open(filepath.Join(wordDir, "document.xml"))
+	if err != nil {
+		zipWriter.Close()
+		zipFile.Close()
+		t.Fatalf("Failed to open document.xml: %v", err)
+	}
+	defer xmlFile.Close()
+
+	xmlInfo, err := xmlFile.Stat()
+	if err != nil {
+		zipWriter.Close()
+		zipFile.Close()
+		t.Fatalf("Failed to get document.xml info: %v", err)
+	}
+
+	xmlHeader := &zip.FileHeader{
+		Name:   "word/document.xml",
+		Method: zip.Deflate,
+	}
+	xmlHeader.SetModTime(xmlInfo.ModTime())
+
+	xmlWriter, err := zipWriter.CreateHeader(xmlHeader)
+	if err != nil {
+		zipWriter.Close()
+		zipFile.Close()
+		t.Fatalf("Failed to create ZIP entry: %v", err)
+	}
+
+	_, err = io.Copy(xmlWriter, xmlFile)
+	if err != nil {
+		zipWriter.Close()
+		zipFile.Close()
+		t.Fatalf("Failed to write document.xml to ZIP: %v", err)
+	}
+
+	// Close the ZIP file
+	err = zipWriter.Close()
+	if err != nil {
+		zipFile.Close()
+		t.Fatalf("Failed to close ZIP writer: %v", err)
+	}
+
+	err = zipFile.Close()
+	if err != nil {
+		t.Fatalf("Failed to close ZIP file: %v", err)
+	}
+
+	defer os.Remove(testFile)
+
+	// Test different variations of the filename with range arguments
+	// This specifically tests the regression mentioned in the task
+	testCases := []struct {
+		name     string
+		query    string
+		rangeArg string
+		expected bool
+	}{
+		{"exact match with range", "The Brain.docx", "1-3", true},
+		{"lowercase no spaces with range", "thebrain.docx", "1-3", true},
+		{"lowercase with spaces with range", "the brain.docx", "1-3", true},
+		{"uppercase no spaces with range", "THEBRAIN.DOCX", "1-3", true},
+		{"uppercase with spaces with range", "THE BRAIN.DOCX", "1-3", true},
+		{"mixed case no spaces with range", "TheBrain.docx", "1-3", true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var cmd *exec.Cmd
+			if tc.rangeArg != "" {
+				cmd = exec.Command("../clip", tc.query, tc.rangeArg)
+			} else {
+				cmd = exec.Command("../clip", tc.query)
+			}
+			output, err = cmd.CombinedOutput()
+			if tc.expected && err != nil {
+				t.Errorf("Expected success for %q with range %q but got error: %v\n%s", tc.query, tc.rangeArg, err, output)
+				return
+			} else if !tc.expected && err == nil {
+				t.Errorf("Expected error for %q with range %q but got success", tc.query, tc.rangeArg)
+				return
+			}
+
+			if tc.expected {
+				outputStr := string(output)
+				if !contains(outputStr, "✓ Found:") {
+					t.Errorf("Output should contain '✓ Found:' for %q with range %q, got: %s", tc.query, tc.rangeArg, outputStr)
+				}
+				if tc.rangeArg != "" {
+					if !contains(outputStr, "✓ Extracted paragraphs 1-3 successfully") {
+						t.Errorf("Output should contain '✓ Extracted paragraphs 1-3 successfully' for %q with range %q, got: %s", tc.query, tc.rangeArg, outputStr)
+					}
+				} else {
+					if !contains(outputStr, "✓ Extracted text successfully") {
+						t.Errorf("Output should contain '✓ Extracted text successfully' for %q, got: %s", tc.query, outputStr)
+					}
+				}
+				if !contains(outputStr, "✓ Copied to clipboard") {
+					t.Errorf("Output should contain '✓ Copied to clipboard' for %q with range %q, got: %s", tc.query, tc.rangeArg, outputStr)
+				}
+			}
+		})
+	}
+}
