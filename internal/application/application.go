@@ -95,7 +95,7 @@ func (app *Application) ExtractWithRange(ctx context.Context, filePath string, r
 				err = parseErr
 			}
 		} else {
-			// Parser doesn't support ranges
+			// Parser doesn't support ranges - this should not happen for DOCX as it implements RangeParser
 			return fmt.Errorf("range extraction is not currently supported for %s files", fileType)
 		}
 	} else {
