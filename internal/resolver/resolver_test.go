@@ -199,15 +199,16 @@ func TestMultipleFilesFound(t *testing.T) {
 		resolver := New()
 		ctx := context.Background()
 
-		_, err = resolver.Resolve(ctx, filename)
-		if err == nil {
-			t.Errorf("Expected error for multiple files, got nil")
+		// With the new resolver behavior, it should prioritize the current directory file
+		resolvedPath, err := resolver.Resolve(ctx, filename)
+		if err != nil {
+			t.Errorf("Expected no error (current directory should be prioritized), got: %v", err)
 		}
 
-		// The error should indicate multiple files were found
-		expectedErrorPrefix := "multiple files named"
-		if !strings.Contains(err.Error(), expectedErrorPrefix) {
-			t.Errorf("Expected error message to contain %q, got %q", expectedErrorPrefix, err.Error())
+		// Should resolve to the file in current directory
+		expectedPath := filepath.Join(".", filename)
+		if resolvedPath != expectedPath {
+			t.Errorf("Expected resolution to current directory file %q, got %q", expectedPath, resolvedPath)
 		}
 	})
 }
@@ -436,15 +437,15 @@ func TestMultipleFilesSmartMatching(t *testing.T) {
 
 		// Query with exact match that would find both files
 		query := "The Brain.docx"
-		_, err = resolver.Resolve(ctx, query)
-		if err == nil {
-			t.Errorf("Expected error for multiple files, got nil")
+		resolvedPath, err := resolver.Resolve(ctx, query)
+		if err != nil {
+			t.Errorf("Expected no error (current directory should be prioritized), got: %v", err)
 		}
 
-		// The error should indicate multiple files were found
-		expectedErrorPrefix := "multiple files named"
-		if !strings.Contains(err.Error(), expectedErrorPrefix) {
-			t.Errorf("Expected error message to contain %q, got %q", expectedErrorPrefix, err.Error())
+		// Should resolve to the file in current directory
+		expectedPath := filepath.Join(".", query)
+		if resolvedPath != expectedPath {
+			t.Errorf("Expected resolution to current directory file %q, got %q", expectedPath, resolvedPath)
 		}
 	})
 }

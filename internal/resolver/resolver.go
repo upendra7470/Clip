@@ -146,7 +146,25 @@ func (r *Resolver) resolveFilename(ctx context.Context, filename string) (string
 		// Single file found
 		return foundFiles[0], nil
 	default:
-		// Multiple files found - ask user to select
+		// Multiple files found - prioritize current directory if it contains a match
+		var currentDirMatch string
+
+		for _, file := range foundFiles {
+			// Check if the file is in the current directory
+			relPath, err := filepath.Rel(".", file)
+			if err == nil && !strings.HasPrefix(relPath, "..") {
+				// This file is in the current directory (or subdirectory)
+				currentDirMatch = file
+				break
+			}
+		}
+
+		if currentDirMatch != "" {
+			// Return the current directory match
+			return currentDirMatch, nil
+		}
+
+		// If no current directory match, ask user to select
 		return "", r.handleMultipleFiles(filename, foundFiles)
 	}
 }
