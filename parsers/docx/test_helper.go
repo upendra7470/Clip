@@ -46,5 +46,6 @@ func createTestDOCXFromXML(t *testing.T, path string, xmlContent string) {
 }
 
 func extractContentFromXML(xmlContent string) (string, error) {
-	return extractStructuredContentFromXML(xmlContent)
+	text, _, err := extractStructuredContentFromXML(xmlContent, false)
+	return text, err
 }

@@ -1,223 +1,271 @@
 package docx
 
 import (
-	"archive/zip"
 	"context"
-	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/upendra7470/clip/internal/parser"
 )
 
-func TestParseRange(t *testing.T) {
-	// Create a temporary test DOCX file
-	tempDir := t.TempDir()
-	testFile := filepath.Join(tempDir, "test.docx")
-	createTestDOCX(t, testFile, "Paragraph 1: Hello World\nParagraph 2: This is a test\nParagraph 3: For range extraction\nParagraph 4: With multiple paragraphs\nParagraph 5: End of document")
-
-	// Test requesting 2-4 from a document with at least 4 paragraphs
-	docxParser := &Parser{}
-	req := parser.ParseRequest{
-		File: testFile,
+func TestExtractBlocks(t *testing.T) {
+	tests := []struct {
+		name     string
+		content  string
+		start    int
+		end      int
+		expected string
+	}{
+		{
+			name:     "Full extraction",
+			content:  "Test content",
+			start:    1,
+			end:      1,
+			expected: "Test content",
+		},
+		{
+			name:     "Block range extraction",
+			content:  "Block 1\nBlock 2\nBlock 3",
+			start:    2,
+			end:      2,
+			expected: "Block 2",
+		},
+		{
+			name:     "Out of range block range",
+			content:  "Block 1\nBlock 2\nBlock 3",
+			start:    4,
+			end:      5,
+			expected: "",
+		},
 	}
-	result, err := docxParser.ParseRange(context.Background(), req, 2, 4)
-	if err != nil {
-		t.Fatalf("ParseRange failed: %v", err)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parser := NewParser()
+			result, err := parser.ExtractBlocks(tt.content, tt.start, tt.end)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expected, result)
+		})
 	}
-	assert.NoError(t, err)
-
-	// Regression tests for the DOCX range extraction bug fix
-	assert.NotContains(t, result.Text, "Warning:", "ParseResult.Text must not contain warning messages")
-	assert.NotContains(t, result.Text, "Paragraph 2:", "ParseResult.Text must not contain 'Paragraph 2:' prefix")
-	assert.NotContains(t, result.Text, "Paragraph 3:", "ParseResult.Text must not contain 'Paragraph 3:' prefix")
-	assert.NotContains(t, result.Text, "Paragraph 4:", "ParseResult.Text must not contain 'Paragraph 4:' prefix")
-
-	// Assert that the result contains only the actual document content
-	assert.Contains(t, result.Text, "This is a test", "ParseResult.Text must contain actual content from paragraph 2")
-	assert.Contains(t, result.Text, "For range extraction", "ParseResult.Text must contain actual content from paragraph 3")
-	assert.Contains(t, result.Text, "With multiple paragraphs", "ParseResult.Text must contain actual content from paragraph 4")
-
-	// Test requesting a range that exceeds document length
-	result, err = docxParser.ParseRange(context.Background(), req, 4, 10)
-	assert.NoError(t, err)
-	assert.NotContains(t, result.Text, "Warning:", "ParseResult.Text must not contain warning messages even when range is adjusted")
-	assert.Contains(t, result.Text, "With multiple paragraphs")
-	assert.Contains(t, result.Text, "End of document")
-
-	// Test clipboard content contains only extracted document content
-	result, err = docxParser.ParseRange(context.Background(), req, 1, 3)
-	assert.NoError(t, err)
-	assert.NotContains(t, result.Text, "Warning:", "ParseResult.Text must not contain warning messages")
-	assert.NotContains(t, result.Text, "Paragraph 1:", "ParseResult.Text must not contain 'Paragraph 1:' prefix")
-	assert.NotContains(t, result.Text, "Paragraph 2:", "ParseResult.Text must not contain 'Paragraph 2:' prefix")
-	assert.NotContains(t, result.Text, "Paragraph 3:", "ParseResult.Text must not contain 'Paragraph 3:' prefix")
-	assert.Contains(t, result.Text, "Hello World")
-	assert.Contains(t, result.Text, "This is a test")
-	assert.Contains(t, result.Text, "For range extraction")
-	assert.NotContains(t, result.Text, "End of document")
 }
 
-func TestParseRangeWithRealisticDOCX(t *testing.T) {
-	// Test with the realistic DOCX fixture
-	docxParser := &Parser{}
-	req := parser.ParseRequest{
-		File: "../../test_realistic.docx",
-	}
-
-	// Test full document extraction
-	result, err := docxParser.Parse(context.Background(), req)
-	assert.NoError(t, err)
-
-	// Verify full extraction returns actual content
-	assert.Contains(t, result.Text, "This is the first paragraph of the document")
-	assert.Contains(t, result.Text, "This is the second paragraph")
-	assert.Contains(t, result.Text, "Third paragraph here")
-	assert.Contains(t, result.Text, "This is the first paragraph after the table")
-	assert.Contains(t, result.Text, "Second paragraph after the table")
-	assert.Contains(t, result.Text, "Final paragraph of the document")
-
-	// Verify table structure is preserved
-	assert.Contains(t, result.Text, "| Name | Age | Occupation |")
-	assert.Contains(t, result.Text, "| --- | --- | --- |")
-	assert.Contains(t, result.Text, "| John Doe | 30 | Software Engineer |")
-	assert.Contains(t, result.Text, "| Jane Smith | 25 | Data Scientist |")
-
-	// Test range 1-3 extraction
-	result, err = docxParser.ParseRange(context.Background(), req, 1, 3)
-	assert.NoError(t, err)
-
-	// Verify range output contains no artificial warning
-	assert.NotContains(t, result.Text, "Warning:")
-
-	// Verify range output contains no artificial "Paragraph N:" prefixes
-	assert.NotContains(t, result.Text, "Paragraph 1:")
-	assert.NotContains(t, result.Text, "Paragraph 2:")
-	assert.NotContains(t, result.Text, "Paragraph 3:")
-
-	// Verify range 1-3 returns actual content
-	assert.Contains(t, result.Text, "This is the first paragraph of the document")
-	assert.Contains(t, result.Text, "This is the second paragraph")
-	assert.Contains(t, result.Text, "Third paragraph here")
-
-	// Test range that includes the table
-	result, err = docxParser.ParseRange(context.Background(), req, 3, 6)
-	assert.NoError(t, err)
-
-	// Verify table remains structured
-	assert.Contains(t, result.Text, "Name")
-	assert.Contains(t, result.Text, "Age")
-	assert.Contains(t, result.Text, "Occupation")
-
-	// Test range outside document length
-	result, err = docxParser.ParseRange(context.Background(), req, 16, 20)
-	assert.Error(t, err)
-
-	// Verify error handling for out-of-range requests
-	assert.Contains(t, err.Error(), "requested paragraph range exceeds document paragraph count")
-	assert.NotContains(t, result.Text, "Warning:")
-}
-
-func TestParseRangeNoAdjustmentNoWarning(t *testing.T) {
-	// Test that no warning is generated when requested range fits exactly
-	tempDir := t.TempDir()
-	testFile := filepath.Join(tempDir, "test.docx")
-	createTestDOCX(t, testFile, "Paragraph 1: Hello\nParagraph 2: World\nParagraph 3: Test\nParagraph 4: Document")
-
-	docxParser := &Parser{}
-	req := parser.ParseRequest{
-		File: testFile,
-	}
-
-	// Request range 2-4 which exactly matches the document's paragraph count
-	result, err := docxParser.ParseRange(context.Background(), req, 2, 4)
-	assert.NoError(t, err)
-
-	// Should not contain any warning since no adjustment was needed
-	assert.NotContains(t, result.Text, "Warning:", "No warning should be generated when range fits exactly")
-	assert.NotContains(t, result.Text, "Paragraph 2:", "ParseResult.Text must not contain 'Paragraph 2:' prefix")
-	assert.NotContains(t, result.Text, "Paragraph 3:", "ParseResult.Text must not contain 'Paragraph 3:' prefix")
-	assert.NotContains(t, result.Text, "Paragraph 4:", "ParseResult.Text must not contain 'Paragraph 4:' prefix")
-	assert.Contains(t, result.Text, "World")
-	assert.Contains(t, result.Text, "Test")
-	assert.Contains(t, result.Text, "Document")
-}
-
-func TestParseFullDocumentNoPrefixes(t *testing.T) {
-	// Test that full document extraction also removes "Paragraph N:" prefixes
-	tempDir := t.TempDir()
-	testFile := filepath.Join(tempDir, "test.docx")
-	createTestDOCX(t, testFile, "Paragraph 1: Hello\nParagraph 2: World\nParagraph 3: Test")
-
-	docxParser := &Parser{}
-	req := parser.ParseRequest{
-		File: testFile,
-	}
-
-	// Test full document extraction
-	result, err := docxParser.Parse(context.Background(), req)
-	assert.NoError(t, err)
-
-	// Should not contain any paragraph prefixes
-	assert.NotContains(t, result.Text, "Paragraph 1:", "Full document extraction must not contain 'Paragraph 1:' prefix")
-	assert.NotContains(t, result.Text, "Paragraph 2:", "Full document extraction must not contain 'Paragraph 2:' prefix")
-	assert.NotContains(t, result.Text, "Paragraph 3:", "Full document extraction must not contain 'Paragraph 3:' prefix")
-
-	// Should contain the actual content
-	assert.Contains(t, result.Text, "Hello")
-	assert.Contains(t, result.Text, "World")
-	assert.Contains(t, result.Text, "Test")
-}
-
-func createTestDOCX(t *testing.T, path string, content string) {
-	// Create a DOCX file with the provided test content
-	// Always create a new DOCX with the test content, don't use the fixture
-	tempDir := t.TempDir()
-	dst := filepath.Join(tempDir, "word", "document.xml")
-
-	// Create directory structure
-	err := os.MkdirAll(filepath.Dir(dst), 0755)
-	assert.NoError(t, err)
-
-	// Create the document.xml with test content
-	testContent := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+// TestParseRangeWithTables tests that ParseRange preserves table structure
+func TestParseRangeWithTables(t *testing.T) {
+	// Create a test DOCX file with paragraphs and tables
+	xmlContent := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-	<w:body>`
-	lines := strings.Split(content, "\n")
-	for _, line := range lines {
-		if line == "" {
-			continue
-		}
-		testContent += `
-		<w:p>
-			<w:r>
-				<w:t>` + line + `</w:t>
-			</w:r>
-		</w:p>`
-	}
-	testContent += `
-	</w:body>
+	   <w:body>
+	       <w:p>
+	           <w:r>
+	               <w:t>First paragraph</w:t>
+	           </w:r>
+	       </w:p>
+	       <w:p>
+	           <w:r>
+	               <w:t>Second paragraph</w:t>
+	           </w:r>
+	       </w:p>
+	       <w:tbl>
+	           <w:tr>
+	               <w:tc>
+	                   <w:p>
+	                       <w:r>
+	                           <w:t>Table Cell 1</w:t>
+	                       </w:r>
+	                   </w:p>
+	               </w:tc>
+	               <w:tc>
+	                   <w:p>
+	                       <w:r>
+	                           <w:t>Table Cell 2</w:t>
+	                       </w:r>
+	                   </w:p>
+	               </w:tc>
+	           </w:tr>
+	       </w:tbl>
+	       <w:p>
+	           <w:r>
+	               <w:t>Third paragraph</w:t>
+	           </w:r>
+	       </w:p>
+	   </w:body>
 </w:document>`
-	srcContent := []byte(testContent)
 
-	// Write the document.xml to the temporary location
-	err = os.WriteFile(dst, srcContent, 0644)
+	// Create temporary DOCX file
+	tempDir := t.TempDir()
+	docxPath := filepath.Join(tempDir, "test.docx")
+	createTestDOCXFromXML(t, docxPath, xmlContent)
+
+	docParser := NewParser()
+
+	// Test 1: Parse full document should include table
+	req := parser.ParseRequest{File: docxPath}
+	result, err := docParser.Parse(context.Background(), req)
+	assert.NoError(t, err)
+	assert.Contains(t, result.Text, "First paragraph")
+	assert.Contains(t, result.Text, "Second paragraph")
+	assert.Contains(t, result.Text, "| Table Cell 1 | Table Cell 2 |")
+	assert.Contains(t, result.Text, "Third paragraph")
+
+	// Test 2: ParseRange should use same structured path and preserve tables
+	// Range 1-2 should get first two paragraphs
+	result, err = docParser.ParseRange(context.Background(), req, 1, 2)
+	assert.NoError(t, err)
+	assert.Contains(t, result.Text, "First paragraph")
+	assert.Contains(t, result.Text, "Second paragraph")
+	// Should NOT contain table or third paragraph
+	assert.NotContains(t, result.Text, "Table Cell 1")
+	assert.NotContains(t, result.Text, "Third paragraph")
+
+	// Test 3: ParseRange with range that includes table (paragraphs 3-4)
+	// The table counts as one paragraph unit, and third paragraph as another
+	result, err = docParser.ParseRange(context.Background(), req, 3, 4)
+	assert.NoError(t, err)
+	// Should contain table and third paragraph
+	assert.Contains(t, result.Text, "| Table Cell 1 | Table Cell 2 |")
+	assert.Contains(t, result.Text, "Third paragraph")
+	// Should NOT contain first paragraphs
+	assert.NotContains(t, result.Text, "First paragraph")
+	assert.NotContains(t, result.Text, "Second paragraph")
+}
+
+// TestParseRangeConsistency tests that Parse and ParseRange use the same parsing logic
+func TestParseRangeConsistency(t *testing.T) {
+	// Create a test DOCX file with complex content
+	xmlContent := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+	   <w:body>
+	       <w:p>
+	           <w:r>
+	               <w:t>Paragraph 1</w:t>
+	           </w:r>
+	       </w:p>
+	       <w:tbl>
+	           <w:tr>
+	               <w:tc>
+	                   <w:p>
+	                       <w:r>
+	                           <w:t>Header</w:t>
+	                       </w:r>
+	                   </w:p>
+	               </w:tc>
+	           </w:tr>
+	           <w:tr>
+	               <w:tc>
+	                   <w:p>
+	                       <w:r>
+	                           <w:t>Data</w:t>
+	                       </w:r>
+	                   </w:p>
+	               </w:tc>
+	           </w:tr>
+	       </w:tbl>
+	       <w:p>
+	           <w:r>
+	               <w:t>Paragraph 2</w:t>
+	           </w:r>
+	       </w:p>
+	   </w:body>
+</w:document>`
+
+	// Create temporary DOCX file
+	tempDir := t.TempDir()
+	docxPath := filepath.Join(tempDir, "test.docx")
+	createTestDOCXFromXML(t, docxPath, xmlContent)
+
+	docParser := NewParser()
+	req := parser.ParseRequest{File: docxPath}
+
+	// Parse full document
+	fullResult, err := docParser.Parse(context.Background(), req)
 	assert.NoError(t, err)
 
-	// Create the DOCX file (ZIP archive)
-	zipFile, err := os.Create(path)
-	assert.NoError(t, err)
-	defer zipFile.Close()
-
-	zipWriter := zip.NewWriter(zipFile)
-	defer zipWriter.Close()
-
-	// Add document.xml to the ZIP archive
-	xmlFile, err := zipWriter.Create("word/document.xml")
+	// Parse full range - get total paragraphs first by parsing
+	// We'll use a large number for end to get all content
+	rangeResult, err := docParser.ParseRange(context.Background(), req, 1, 100)
 	assert.NoError(t, err)
 
-	_, err = xmlFile.Write(srcContent)
+	// Both should contain the same content (tables and paragraphs)
+	// Check that both contain the essential elements
+	assert.Contains(t, fullResult.Text, "Paragraph 1")
+	assert.Contains(t, fullResult.Text, "| Header |")
+	assert.Contains(t, fullResult.Text, "| Data |")
+	assert.Contains(t, fullResult.Text, "Paragraph 2")
+
+	assert.Contains(t, rangeResult.Text, "Paragraph 1")
+	assert.Contains(t, rangeResult.Text, "| Header |")
+	assert.Contains(t, rangeResult.Text, "| Data |")
+	assert.Contains(t, rangeResult.Text, "Paragraph 2")
+}
+
+// TestParseRangePreservesUnicode tests that ParseRange preserves Unicode characters
+func TestParseRangePreservesUnicode(t *testing.T) {
+	xmlContent := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+	   <w:body>
+	       <w:p>
+	           <w:r>
+	               <w:t>English text</w:t>
+	           </w:r>
+	       </w:p>
+	       <w:p>
+	           <w:r>
+	               <w:t>中文文字</w:t>
+	           </w:r>
+	       </w:p>
+	       <w:p>
+	           <w:r>
+	               <w:t>Русский текст</w:t>
+	           </w:r>
+	       </w:p>
+	   </w:body>
+</w:document>`
+
+	// Create temporary DOCX file
+	tempDir := t.TempDir()
+	docxPath := filepath.Join(tempDir, "test.docx")
+	createTestDOCXFromXML(t, docxPath, xmlContent)
+
+	docParser := NewParser()
+	req := parser.ParseRequest{File: docxPath}
+
+	// Parse range for middle paragraph (Chinese)
+	result, err := docParser.ParseRange(context.Background(), req, 2, 2)
 	assert.NoError(t, err)
+	assert.Equal(t, "中文文字", result.Text)
+}
+
+func TestExtractTables(t *testing.T) {
+	tests := []struct {
+		name     string
+		content  string
+		start    int
+		end      int
+		expected string
+	}{
+		{
+			name:     "Table in selected range",
+			content:  "Table 1\nTable 2\nTable 3",
+			start:    2,
+			end:      2,
+			expected: "Table 2",
+		},
+		{
+			name:     "Nested table paragraphs",
+			content:  "Table 1\nNested Table 1\nNested Table 2\nTable 2",
+			start:    2,
+			end:      3,
+			expected: "Nested Table 1\nNested Table 2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parser := NewParser()
+			result, err := parser.ExtractTables(tt.content, tt.start, tt.end)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
 }

@@ -74,7 +74,7 @@ func TestExtractStructuredContentFromXML_Tables(t *testing.T) {
     </w:body>
 </w:document>`
 
-	result, err := extractStructuredContentFromXML(testXML)
+	result, _, err := extractStructuredContentFromXML(testXML, false)
 	assert.NoError(t, err)
 
 	// Verify paragraphs
@@ -135,7 +135,7 @@ func TestExtractStructuredContentFromXML_NestedParagraphsInTableCells(t *testing
     </w:body>
 </w:document>`
 
-	result, err := extractStructuredContentFromXML(testXML)
+	result, _, err := extractStructuredContentFromXML(testXML, false)
 	assert.NoError(t, err)
 
 	// Verify paragraphs
@@ -176,7 +176,7 @@ func TestExtractStructuredContentFromXML_UnicodePreservation(t *testing.T) {
     </w:body>
 </w:document>`
 
-	result, err := extractStructuredContentFromXML(testXML)
+	result, _, err := extractStructuredContentFromXML(testXML, false)
 	assert.NoError(t, err)
 
 	// Verify Unicode preservation
@@ -254,7 +254,7 @@ func TestExtractStructuredContentFromXML_MixedDocumentContent(t *testing.T) {
     </w:body>
 </w:document>`
 
-	result, err := extractStructuredContentFromXML(testXML)
+	result, _, err := extractStructuredContentFromXML(testXML, false)
 	assert.NoError(t, err)
 
 	// Verify mixed content
@@ -281,7 +281,7 @@ func TestExtractStructuredContentFromXML_EmptyDocument(t *testing.T) {
     </w:body>
 </w:document>`
 
-	result, err := extractStructuredContentFromXML(testXML)
+	result, _, err := extractStructuredContentFromXML(testXML, false)
 	assert.NoError(t, err)
 	assert.Equal(t, "", result)
 }
@@ -308,7 +308,7 @@ func TestExtractStructuredContentFromXML_OnlyParagraphs(t *testing.T) {
     </w:body>
 </w:document>`
 
-	result, err := extractStructuredContentFromXML(testXML)
+	result, _, err := extractStructuredContentFromXML(testXML, false)
 	assert.NoError(t, err)
 
 	// Verify paragraphs are separated by newlines
@@ -360,7 +360,7 @@ func TestExtractStructuredContentFromXML_OnlyTables(t *testing.T) {
     </w:body>
 </w:document>`
 
-	result, err := extractStructuredContentFromXML(testXML)
+	result, _, err := extractStructuredContentFromXML(testXML, false)
 	assert.NoError(t, err)
 
 	// Verify table structure

@@ -243,7 +243,7 @@ func main() {
 	fmt.Printf("✓ Found: %s\n", resolvedPath)
 	if rangeObj != nil {
 		// Determine the correct range unit based on file type
-		rangeUnit := "pages" // default
+		rangeUnit := "blocks" // default
 		if rangeParser, ok := parserObj.(parser.RangeParser); ok {
 			rangeUnit = rangeParser.GetRangeUnit()
 		}
@@ -289,19 +289,18 @@ func showHelp() {
 	fmt.Println("    clip README.md 5-10")
 	fmt.Println()
 	fmt.Println("Range units by file type:")
-	fmt.Println("  PDF       -> pages")
+	fmt.Println("  DOCX      -> blocks")
 	fmt.Println("  PPT/PPTX  -> slides")
-	fmt.Println("  DOCX      -> paragraphs")
 	fmt.Println("  ODT       -> paragraphs")
 	fmt.Println("  RTF       -> paragraphs")
 	fmt.Println("  TXT       -> lines")
-	fmt.Println("  Markdown  -> lines")
+	fmt.Println("  Markdown  -> blocks")
 	fmt.Println("  CSV       -> rows")
 	fmt.Println("  XLSX      -> rows")
 	fmt.Println("  ODS       -> rows")
-	fmt.Println("  JSON      -> extracted values")
-	fmt.Println("  XML       -> extracted text blocks")
-	fmt.Println("  HTML      -> extracted text blocks")
+	fmt.Println("  JSON      -> entries")
+	fmt.Println("  XML       -> entries")
+	fmt.Println("  HTML      -> blocks")
 	fmt.Println("  YAML      -> extracted values")
 	fmt.Println()
 	fmt.Println("Note: Remember to quote filenames containing spaces.")

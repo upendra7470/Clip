@@ -31,6 +31,11 @@ func (e *TextParserError) Unwrap() error {
 // Parser implements the parser.Parser and parser.RangeParser interfaces for plain text files.
 type Parser struct{}
 
+// NewParser creates a new TXT Parser instance.
+func NewParser() *Parser {
+	return &Parser{}
+}
+
 // Parse reads the entire content of a text file and returns it unchanged.
 // It ignores any selection criteria and returns the complete file content.
 func (p *Parser) Parse(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
@@ -154,4 +159,33 @@ func wrapError(message string, err error) error {
 		message: message,
 		cause:   err,
 	}
+}
+
+// ExtractLines extracts lines from txt content based on the given range
+func (p *Parser) ExtractLines(content string, start, end int) (string, error) {
+	// Split into lines
+	lines := strings.Split(content, "\n")
+
+	if start < 1 || end < 1 {
+		return "", fmt.Errorf("line numbers must start from 1, got %d-%d", start, end)
+	}
+	if end < start {
+		return "", fmt.Errorf("invalid line range: start must not be greater than end (got %d-%d)", start, end)
+	}
+	if start > len(lines) {
+		return "", nil // Out of range returns empty
+	}
+	if end > len(lines) {
+		end = len(lines)
+	}
+
+	var result strings.Builder
+	for i := start - 1; i < end && i < len(lines); i++ {
+		if i > start-1 {
+			result.WriteString("\n")
+		}
+		result.WriteString(lines[i])
+	}
+
+	return result.String(), nil
 }

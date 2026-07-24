@@ -75,7 +75,7 @@ func (p *Parser) FileType() filetype.FileType {
 
 // GetRangeUnit returns the unit type that this parser uses for ranges.
 func (p *Parser) GetRangeUnit() string {
-	return "lines"
+	return "entries"
 }
 
 // ParseRange extracts text from a specific line range in a JSON file.

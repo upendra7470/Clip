@@ -14,6 +14,11 @@ import (
 // Parser implements the parser.Parser and parser.RangeParser interfaces for CSV files.
 type Parser struct{}
 
+// NewParser creates a new CSV Parser instance.
+func NewParser() *Parser {
+	return &Parser{}
+}
+
 // Parse reads a CSV file and extracts text content.
 // It uses the standard library encoding/csv package for parsing.
 func (p *Parser) Parse(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
@@ -126,6 +131,38 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	return parser.ParseResult{
 		Text: result.String(),
 	}, nil
+}
+
+// ExtractRows extracts rows from CSV content based on the given range
+func (p *Parser) ExtractRows(content string, start, end int) (string, error) {
+	// Parse the CSV content
+	reader := strings.NewReader(content)
+	csvReader := csv.NewReader(reader)
+	records, err := csvReader.ReadAll()
+	if err != nil {
+		return "", fmt.Errorf("failed to parse CSV: %w", err)
+	}
+
+	if start < 1 || end < 1 {
+		return "", fmt.Errorf("row numbers must start from 1, got %d-%d", start, end)
+	}
+	if end < start {
+		return "", fmt.Errorf("invalid row range: start must not be greater than end (got %d-%d)", start, end)
+	}
+	if start > len(records) || end > len(records) {
+		return "", fmt.Errorf("requested row range exceeds CSV row count (CSV has %d rows, requested %d-%d)", len(records), start, end)
+	}
+
+	var result strings.Builder
+	for i := start - 1; i < end && i < len(records); i++ {
+		if i > start-1 {
+			result.WriteString("\n")
+		}
+		// Join fields with commas (preserve CSV structure)
+		result.WriteString(strings.Join(records[i], ", "))
+	}
+
+	return result.String(), nil
 }
 
 // wrapError wraps an error with additional context.

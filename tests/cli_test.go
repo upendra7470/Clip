@@ -528,8 +528,8 @@ Content for line 3`
 	if !contains(outputStr, "✓ Found:") {
 		t.Errorf("Output should contain '✓ Found:', got: %s", outputStr)
 	}
-	if !contains(outputStr, "✓ Extracted lines 3-5 successfully") {
-		t.Errorf("Output should contain '✓ Extracted lines 3-5 successfully', got: %s", outputStr)
+	if !contains(outputStr, "✓ Extracted blocks 3-5 successfully") {
+		t.Errorf("Output should contain '✓ Extracted blocks 3-5 successfully', got: %s", outputStr)
 	}
 	if !contains(outputStr, "✓ Copied to clipboard") {
 		t.Errorf("Output should contain '✓ Copied to clipboard', got: %s", outputStr)
@@ -571,8 +571,8 @@ func TestCLIRangeExtractionJSON(t *testing.T) {
 	if !contains(outputStr, "✓ Found:") {
 		t.Errorf("Output should contain '✓ Found:', got: %s", outputStr)
 	}
-	if !contains(outputStr, "✓ Extracted lines 2-4 successfully") {
-		t.Errorf("Output should contain '✓ Extracted lines 2-4 successfully', got: %s", outputStr)
+	if !contains(outputStr, "✓ Extracted entries 2-4 successfully") {
+		t.Errorf("Output should contain '✓ Extracted entries 2-4 successfully', got: %s", outputStr)
 	}
 	if !contains(outputStr, "✓ Copied to clipboard") {
 		t.Errorf("Output should contain '✓ Copied to clipboard', got: %s", outputStr)

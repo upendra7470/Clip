@@ -33,6 +33,11 @@ func (e *ODTParserError) Unwrap() error {
 // Parser implements the parser.Parser and parser.RangeParser interfaces for ODT files.
 type Parser struct{}
 
+// NewParser creates a new ODT Parser instance.
+func NewParser() *Parser {
+	return &Parser{}
+}
+
 // Parse reads an ODT file and extracts text content.
 // ODT files are ZIP archives containing XML files.
 // This parser extracts text from content.xml <text:p> nodes.
@@ -303,4 +308,33 @@ func wrapError(message string, err error) error {
 		message: message,
 		cause:   err,
 	}
+}
+
+// ExtractBlocks extracts blocks from odt content based on the given range
+func (p *Parser) ExtractBlocks(content string, start, end int) (string, error) {
+	// Split into blocks (paragraphs separated by double newlines)
+	blocks := strings.Split(content, "\n\n")
+
+	if start < 1 || end < 1 {
+		return "", fmt.Errorf("block numbers must start from 1, got %d-%d", start, end)
+	}
+	if end < start {
+		return "", fmt.Errorf("invalid block range: start must not be greater than end (got %d-%d)", start, end)
+	}
+	if start > len(blocks) {
+		return "", nil // Out of range returns empty
+	}
+	if end > len(blocks) {
+		end = len(blocks)
+	}
+
+	var result strings.Builder
+	for i := start - 1; i < end && i < len(blocks); i++ {
+		if i > start-1 {
+			result.WriteString("\n\n")
+		}
+		result.WriteString(blocks[i])
+	}
+
+	return result.String(), nil
 }

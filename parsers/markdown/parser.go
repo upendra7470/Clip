@@ -14,6 +14,11 @@ import (
 // Parser implements the parser.Parser and parser.RangeParser interfaces for Markdown files.
 type Parser struct{}
 
+// NewParser creates a new Markdown Parser instance.
+func NewParser() *Parser {
+	return &Parser{}
+}
+
 // Parse reads a Markdown file and returns extracted readable text.
 // It processes basic Markdown syntax to make the content more readable.
 func (p *Parser) Parse(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
@@ -47,7 +52,7 @@ func (p *Parser) FileType() filetype.FileType {
 
 // GetRangeUnit returns the unit type that this parser uses for ranges.
 func (p *Parser) GetRangeUnit() string {
-	return "lines"
+	return "blocks"
 }
 
 // ParseRange extracts text from a specific line range in a Markdown file.
@@ -102,6 +107,32 @@ func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start,
 	return parser.ParseResult{
 		Text: processed,
 	}, nil
+}
+
+// ExtractBlocks extracts blocks from markdown content based on the given range
+func (p *Parser) ExtractBlocks(content string, start, end int) (string, error) {
+	// Split into blocks (paragraphs separated by double newlines)
+	blocks := strings.Split(content, "\n\n")
+
+	if start < 1 || end < 1 {
+		return "", fmt.Errorf("block numbers must start from 1, got %d-%d", start, end)
+	}
+	if end < start {
+		return "", fmt.Errorf("invalid block range: start must not be greater than end (got %d-%d)", start, end)
+	}
+	if start > len(blocks) || end > len(blocks) {
+		return "", fmt.Errorf("requested block range exceeds content (content has %d blocks, requested %d-%d)", len(blocks), start, end)
+	}
+
+	var result strings.Builder
+	for i := start - 1; i < end && i < len(blocks); i++ {
+		if i > start-1 {
+			result.WriteString("\n\n")
+		}
+		result.WriteString(blocks[i])
+	}
+
+	return result.String(), nil
 }
 
 // processMarkdown processes basic Markdown syntax to extract readable text.

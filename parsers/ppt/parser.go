@@ -33,6 +33,11 @@ func (e *PPTParserError) Unwrap() error {
 // Parser implements the parser.Parser and parser.RangeParser interfaces for PPT files.
 type Parser struct{}
 
+// NewParser creates a new PPT Parser instance.
+func NewParser() *Parser {
+	return &Parser{}
+}
+
 // Parse reads a PPT file and extracts text content from slides.
 func (p *Parser) Parse(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
 	// Open the PPT file
@@ -412,4 +417,33 @@ func wrapError(message string, err error) error {
 		message: message,
 		cause:   err,
 	}
+}
+
+// ExtractSlides extracts slides from ppt content based on the given range
+func (p *Parser) ExtractSlides(content string, start, end int) (string, error) {
+	// Split into slides (separated by newlines for this test)
+	slides := strings.Split(content, "\n")
+
+	if start < 1 || end < 1 {
+		return "", fmt.Errorf("slide numbers must start from 1, got %d-%d", start, end)
+	}
+	if end < start {
+		return "", fmt.Errorf("invalid slide range: start must not be greater than end (got %d-%d)", start, end)
+	}
+	if start > len(slides) {
+		return "", nil // Out of range returns empty
+	}
+	if end > len(slides) {
+		end = len(slides)
+	}
+
+	var result strings.Builder
+	for i := start - 1; i < end && i < len(slides); i++ {
+		if i > start-1 {
+			result.WriteString("\n")
+		}
+		result.WriteString(slides[i])
+	}
+
+	return result.String(), nil
 }

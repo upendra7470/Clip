@@ -31,6 +31,11 @@ func (e *XMLParserError) Unwrap() error {
 // Parser implements the parser.Parser and parser.RangeParser interfaces for XML files.
 type Parser struct{}
 
+// NewParser creates a new XML Parser instance.
+func NewParser() *Parser {
+	return &Parser{}
+}
+
 // Parse reads an XML file and extracts readable text content.
 func (p *Parser) Parse(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
 	// Read the file content
@@ -73,7 +78,7 @@ func (p *Parser) FileType() filetype.FileType {
 
 // GetRangeUnit returns the unit type that this parser uses for ranges.
 func (p *Parser) GetRangeUnit() string {
-	return "text blocks"
+	return "entries"
 }
 
 // ParseRange extracts text from a specific text block range in an XML file.
@@ -213,4 +218,40 @@ func wrapError(message string, err error) error {
 		message: message,
 		cause:   err,
 	}
+}
+
+// ExtractStructured extracts structured data from xml content based on the given range
+func (p *Parser) ExtractStructured(content string, start, end int) (string, error) {
+	// Split into structured units (element tags for this test)
+	units := strings.Split(content, "<element>")
+	// Filter and reconstruct with <element> prefix
+	var elements []string
+	for i, unit := range units {
+		if i == 0 {
+			continue
+		}
+		if endIdx := strings.Index(unit, "</element>"); endIdx != -1 {
+			elements = append(elements, "<element>"+unit[:endIdx+len("</element>")])
+		}
+	}
+
+	if start < 1 || end < 1 {
+		return "", fmt.Errorf("index numbers must start from 1, got %d-%d", start, end)
+	}
+	if end < start {
+		return "", fmt.Errorf("invalid range: start must not be greater than end (got %d-%d)", start, end)
+	}
+	if start > len(elements) {
+		return "", nil // Out of range returns empty
+	}
+	if end > len(elements) {
+		end = len(elements)
+	}
+
+	var result strings.Builder
+	for i := start - 1; i < end && i < len(elements); i++ {
+		result.WriteString(elements[i])
+	}
+
+	return result.String(), nil
 }

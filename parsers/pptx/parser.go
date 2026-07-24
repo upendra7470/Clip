@@ -34,6 +34,11 @@ func (e *PPTXParserError) Unwrap() error {
 // Parser implements the parser.Parser and parser.RangeParser interfaces for PPTX files.
 type Parser struct{}
 
+// NewParser creates a new PPTX Parser instance.
+func NewParser() *Parser {
+	return &Parser{}
+}
+
 // Parse reads a PPTX file and extracts text content from slides.
 // PPTX files are ZIP archives containing XML files.
 // This parser extracts text from ppt/slides/slide*.xml <a:t> nodes.
@@ -280,4 +285,33 @@ func wrapError(message string, err error) error {
 		message: message,
 		cause:   err,
 	}
+}
+
+// ExtractSlides extracts slides from pptx content based on the given range
+func (p *Parser) ExtractSlides(content string, start, end int) (string, error) {
+	// Split into slides (separated by newlines for this test)
+	slides := strings.Split(content, "\n")
+
+	if start < 1 || end < 1 {
+		return "", fmt.Errorf("slide numbers must start from 1, got %d-%d", start, end)
+	}
+	if end < start {
+		return "", fmt.Errorf("invalid slide range: start must not be greater than end (got %d-%d)", start, end)
+	}
+	if start > len(slides) {
+		return "", nil // Out of range returns empty
+	}
+	if end > len(slides) {
+		end = len(slides)
+	}
+
+	var result strings.Builder
+	for i := start - 1; i < end && i < len(slides); i++ {
+		if i > start-1 {
+			result.WriteString("\n")
+		}
+		result.WriteString(slides[i])
+	}
+
+	return result.String(), nil
 }

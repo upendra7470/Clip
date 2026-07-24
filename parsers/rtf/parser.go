@@ -32,6 +32,11 @@ func (e *RTFParserError) Unwrap() error {
 // Parser implements the parser.Parser and parser.RangeParser interfaces for RTF files.
 type Parser struct{}
 
+// NewParser creates a new RTF Parser instance.
+func NewParser() *Parser {
+	return &Parser{}
+}
+
 // Parse extracts plain text from an RTF file, ignoring formatting and control words.
 func (p *Parser) Parse(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
 	// Check if file exists
@@ -487,4 +492,33 @@ func wrapError(message string, err error) error {
 		message: message,
 		cause:   err,
 	}
+}
+
+// ExtractParagraphs extracts paragraphs from rtf content based on the given range
+func (p *Parser) ExtractParagraphs(content string, start, end int) (string, error) {
+	// Split into paragraphs (separated by double newlines)
+	paragraphs := strings.Split(content, "\n\n")
+
+	if start < 1 || end < 1 {
+		return "", fmt.Errorf("paragraph numbers must start from 1, got %d-%d", start, end)
+	}
+	if end < start {
+		return "", fmt.Errorf("invalid paragraph range: start must not be greater than end (got %d-%d)", start, end)
+	}
+	if start > len(paragraphs) {
+		return "", nil // Out of range returns empty
+	}
+	if end > len(paragraphs) {
+		end = len(paragraphs)
+	}
+
+	var result strings.Builder
+	for i := start - 1; i < end && i < len(paragraphs); i++ {
+		if i > start-1 {
+			result.WriteString("\n\n")
+		}
+		result.WriteString(paragraphs[i])
+	}
+
+	return result.String(), nil
 }

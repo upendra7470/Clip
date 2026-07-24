@@ -17,6 +17,11 @@ import (
 // Parser implements the parser.Parser and parser.RangeParser interfaces for XLSX files.
 type Parser struct{}
 
+// NewParser creates a new XLSX Parser instance.
+func NewParser() *Parser {
+	return &Parser{}
+}
+
 // Parse reads an XLSX file and extracts text content.
 // XLSX files are ZIP archives containing XML files.
 // This parser extracts data from xl/sharedStrings.xml and xl/worksheets/sheet*.xml.
@@ -338,6 +343,35 @@ func wrapError(message string, err error) error {
 		message: message,
 		cause:   err,
 	}
+}
+
+// ExtractRows extracts rows from xlsx content based on the given range
+func (p *Parser) ExtractRows(content string, start, end int) (string, error) {
+	// Split into rows (separated by newlines)
+	rows := strings.Split(content, "\n")
+
+	if start < 1 || end < 1 {
+		return "", fmt.Errorf("row numbers must start from 1, got %d-%d", start, end)
+	}
+	if end < start {
+		return "", fmt.Errorf("invalid row range: start must not be greater than end (got %d-%d)", start, end)
+	}
+	if start > len(rows) {
+		return "", nil // Out of range returns empty
+	}
+	if end > len(rows) {
+		end = len(rows)
+	}
+
+	var result strings.Builder
+	for i := start - 1; i < end && i < len(rows); i++ {
+		if i > start-1 {
+			result.WriteString("\n")
+		}
+		result.WriteString(rows[i])
+	}
+
+	return result.String(), nil
 }
 
 // XLSXParserError represents an error that occurs during XLSX parsing.

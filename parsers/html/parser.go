@@ -30,6 +30,11 @@ func (e *HTMLParserError) Unwrap() error {
 // Parser implements the parser.Parser and parser.RangeParser interfaces for HTML files.
 type Parser struct{}
 
+// NewParser creates a new HTML Parser instance.
+func NewParser() *Parser {
+	return &Parser{}
+}
+
 // Parse reads an HTML file and extracts readable text content.
 func (p *Parser) Parse(ctx context.Context, req parser.ParseRequest) (parser.ParseResult, error) {
 	// Read the file content
@@ -72,7 +77,7 @@ func (p *Parser) FileType() filetype.FileType {
 
 // GetRangeUnit returns the unit type that this parser uses for ranges.
 func (p *Parser) GetRangeUnit() string {
-	return "text blocks"
+	return "blocks"
 }
 
 // ParseRange extracts text from a specific text block range in an HTML file.
@@ -409,4 +414,33 @@ func wrapError(message string, err error) error {
 		message: message,
 		cause:   err,
 	}
+}
+
+// ExtractBlocks extracts blocks from html content based on the given range
+func (p *Parser) ExtractBlocks(content string, start, end int) (string, error) {
+	// Split into blocks (paragraphs separated by double newlines)
+	blocks := strings.Split(content, "\n\n")
+
+	if start < 1 || end < 1 {
+		return "", fmt.Errorf("block numbers must start from 1, got %d-%d", start, end)
+	}
+	if end < start {
+		return "", fmt.Errorf("invalid block range: start must not be greater than end (got %d-%d)", start, end)
+	}
+	if start > len(blocks) {
+		return "", nil // Out of range returns empty
+	}
+	if end > len(blocks) {
+		end = len(blocks)
+	}
+
+	var result strings.Builder
+	for i := start - 1; i < end && i < len(blocks); i++ {
+		if i > start-1 {
+			result.WriteString("\n\n")
+		}
+		result.WriteString(blocks[i])
+	}
+
+	return result.String(), nil
 }
