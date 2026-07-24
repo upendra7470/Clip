@@ -69,8 +69,8 @@ func (p *Parser) Parse(ctx context.Context, req parser.ParseRequest) (parser.Par
 		return parser.ParseResult{}, wrapError("document.xml not found in DOCX", nil)
 	}
 
-	// Parse XML to extract text from <w:t> nodes
-	text, err := extractTextFromXML(documentXML)
+	// Parse XML to extract structured content including tables
+	text, err := extractStructuredContentFromXML(documentXML)
 	if err != nil {
 		return parser.ParseResult{}, wrapError("failed to parse DOCX XML", err)
 	}
@@ -260,15 +260,20 @@ func stripParagraphPrefix(text string) string {
 	return re.ReplaceAllString(text, "")
 }
 
-// extractTextFromXML parses the XML and extracts text from <w:t> nodes.
-func extractTextFromXML(xmlContent string) (string, error) {
-	// Simple XML parsing to extract text from <w:t> nodes
-	// We use a decoder to handle the XML properly
+// extractStructuredContentFromXML parses the XML and extracts structured content including tables.
+func extractStructuredContentFromXML(xmlContent string) (string, error) {
 	var result strings.Builder
-
-	decoder := xml.NewDecoder(strings.NewReader(xmlContent))
+	var inTable bool
+	var inTableRow bool
+	var inTableCell bool
+	var inParagraph bool
 	var inTextNode bool
 	var currentText strings.Builder
+	var tableRows [][]string
+	var currentRow []string
+	var currentCell strings.Builder
+
+	decoder := xml.NewDecoder(strings.NewReader(xmlContent))
 
 	for {
 		token, err := decoder.Token()
@@ -281,7 +286,21 @@ func extractTextFromXML(xmlContent string) (string, error) {
 
 		switch t := token.(type) {
 		case xml.StartElement:
-			if t.Name.Local == "t" && t.Name.Space == "http://schemas.openxmlformats.org/wordprocessingml/2006/main" {
+			// Handle table elements
+			if t.Name.Local == "tbl" && t.Name.Space == "http://schemas.openxmlformats.org/wordprocessingml/2006/main" {
+				inTable = true
+			} else if t.Name.Local == "tr" && t.Name.Space == "http://schemas.openxmlformats.org/wordprocessingml/2006/main" {
+				inTableRow = true
+				currentRow = []string{}
+			} else if t.Name.Local == "tc" && t.Name.Space == "http://schemas.openxmlformats.org/wordprocessingml/2006/main" {
+				inTableCell = true
+				currentCell.Reset()
+			} else if t.Name.Local == "p" && t.Name.Space == "http://schemas.openxmlformats.org/wordprocessingml/2006/main" {
+				inParagraph = true
+				if inTableCell {
+					currentCell.WriteString(" ")
+				}
+			} else if t.Name.Local == "t" && t.Name.Space == "http://schemas.openxmlformats.org/wordprocessingml/2006/main" {
 				inTextNode = true
 				currentText.Reset()
 			}
@@ -294,13 +313,62 @@ func extractTextFromXML(xmlContent string) (string, error) {
 				inTextNode = false
 				text := strings.TrimSpace(currentText.String())
 				if text != "" {
-					// Strip "Paragraph N:" prefix if present
 					text = stripParagraphPrefix(text)
-					if result.Len() > 0 {
-						result.WriteString(" ")
+					if inTableCell {
+						if currentCell.Len() > 0 {
+							currentCell.WriteString(" ")
+						}
+						currentCell.WriteString(text)
+					} else if inParagraph {
+						if result.Len() > 0 {
+							result.WriteString(" ")
+						}
+						result.WriteString(text)
 					}
-					result.WriteString(text)
 				}
+			} else if inParagraph && t.Name.Local == "p" && t.Name.Space == "http://schemas.openxmlformats.org/wordprocessingml/2006/main" {
+				inParagraph = false
+				if !inTableCell {
+					result.WriteString("\n")
+				}
+			} else if inTableCell && t.Name.Local == "tc" && t.Name.Space == "http://schemas.openxmlformats.org/wordprocessingml/2006/main" {
+				inTableCell = false
+				currentRow = append(currentRow, strings.TrimSpace(currentCell.String()))
+			} else if inTableRow && t.Name.Local == "tr" && t.Name.Space == "http://schemas.openxmlformats.org/wordprocessingml/2006/main" {
+				inTableRow = false
+				tableRows = append(tableRows, currentRow)
+			} else if inTable && t.Name.Local == "tbl" && t.Name.Space == "http://schemas.openxmlformats.org/wordprocessingml/2006/main" {
+				inTable = false
+				// Format the table in Markdown style
+				if len(tableRows) > 0 {
+					if result.Len() > 0 {
+						result.WriteString("\n\n")
+					}
+					// Write table header
+					result.WriteString("| ")
+					result.WriteString(strings.Join(tableRows[0], " | "))
+					result.WriteString(" |")
+					result.WriteString("\n")
+					// Write table separator
+					result.WriteString("| ")
+					for range tableRows[0] {
+						result.WriteString("---")
+						if len(tableRows[0]) > 1 {
+							result.WriteString(" | ")
+						}
+					}
+					result.WriteString(" |")
+					result.WriteString("\n")
+					// Write table rows
+					for _, row := range tableRows[1:] {
+						result.WriteString("| ")
+						result.WriteString(strings.Join(row, " | "))
+						result.WriteString(" |")
+						result.WriteString("\n")
+					}
+					result.WriteString("\n")
+				}
+				tableRows = [][]string{}
 			}
 		}
 	}
