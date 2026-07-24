@@ -93,246 +93,117 @@ func (p *Parser) GetRangeUnit() string {
 	return "paragraphs"
 }
 
-	// ParseRange extracts text from a specific paragraph range in a DOCX file.
-	func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start, end int) (parser.ParseResult, error) {
-		// Validate paragraph range
-		if start < 1 || end < 1 {
-			return parser.ParseResult{}, wrapError(fmt.Sprintf("paragraph numbers must start from 1, got %d-%d", start, end), nil)
-		}
-		if end < start {
-			return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid paragraph range: start paragraph must not be greater than end paragraph (got %d-%d)", start, end), nil)
-		}
+// ParseRange extracts text from a specific paragraph range in a DOCX file.
+func (p *Parser) ParseRange(ctx context.Context, req parser.ParseRequest, start, end int) (parser.ParseResult, error) {
+	// Validate paragraph range
+	if start < 1 || end < 1 {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("paragraph numbers must start from 1, got %d-%d", start, end), nil)
+	}
+	if end < start {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("invalid paragraph range: start paragraph must not be greater than end paragraph (got %d-%d)", start, end), nil)
+	}
 
-		// Handle special range formats
-		if start == -1 {
-			start = 1 // Start from beginning
-		}
+	// Handle special range formats
+	if start == -1 {
+		start = 1 // Start from beginning
+	}
 
-		// Open the DOCX file (which is a ZIP archive)
-		file, err := os.Open(req.File)
-		if err != nil {
-			if os.IsNotExist(err) {
-				return parser.ParseResult{}, wrapError("Could not open DOCX file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
+	// Open the DOCX file (which is a ZIP archive)
+	file, err := os.Open(req.File)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return parser.ParseResult{}, wrapError("Could not open DOCX file:\n"+req.File+"\n\nReason:\nfile does not exist", err)
+		}
+		if os.IsPermission(err) {
+			return parser.ParseResult{}, wrapError("Could not open DOCX file:\n"+req.File+"\n\nReason:\npermission denied", err)
+		}
+		return parser.ParseResult{}, wrapError("Could not open DOCX file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
+	}
+	defer file.Close()
+
+	// Get file info for size
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return parser.ParseResult{}, wrapError("failed to get file info", err)
+	}
+
+	// Read the ZIP archive
+	zipReader, err := zip.NewReader(file, fileInfo.Size())
+	if err != nil {
+		return parser.ParseResult{}, wrapError("failed to read DOCX as ZIP archive", err)
+	}
+
+	// Find and extract word/document.xml
+	var documentXML string
+	for _, zipFile := range zipReader.File {
+		if zipFile.Name == "word/document.xml" {
+			rc, err := zipFile.Open()
+			if err != nil {
+				return parser.ParseResult{}, wrapError("failed to open document.xml", err)
 			}
-			if os.IsPermission(err) {
-				return parser.ParseResult{}, wrapError("Could not open DOCX file:\n"+req.File+"\n\nReason:\npermission denied", err)
+			defer rc.Close()
+
+			content, err := io.ReadAll(rc)
+			if err != nil {
+				return parser.ParseResult{}, wrapError("failed to read document.xml", err)
 			}
-			return parser.ParseResult{}, wrapError("Could not open DOCX file:\n"+req.File+"\n\nReason:\n"+err.Error(), err)
+			documentXML = string(content)
+			break
 		}
-		defer file.Close()
+	}
 
-		// Get file info for size
-		fileInfo, err := file.Stat()
-		if err != nil {
-			return parser.ParseResult{}, wrapError("failed to get file info", err)
+	if documentXML == "" {
+		return parser.ParseResult{}, wrapError("document.xml not found in DOCX", nil)
+	}
+
+	// Parse XML to extract text from <w:t> nodes with paragraph tracking
+	text, totalParagraphs, err := extractTextFromXMLWithParagraphs(documentXML)
+	if err != nil {
+		return parser.ParseResult{}, wrapError("failed to parse DOCX XML", err)
+	}
+
+	// Store original requested range
+	originalStart := start
+	originalEnd := end
+
+	// Handle special range formats
+	if end == -1 {
+		end = totalParagraphs // End at last paragraph
+	}
+
+	// Validate range against actual paragraph count
+	if start > totalParagraphs {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("requested paragraph range exceeds document paragraph count (document has %d paragraphs, requested %d-%d)", totalParagraphs, start, end), nil)
+	}
+	if end > totalParagraphs {
+		end = totalParagraphs // Adjust end to last paragraph if it exceeds
+	}
+
+	// Extract only the requested paragraph range
+	paragraphs := strings.Split(text, "\n")
+	var result strings.Builder
+	for i := start - 1; i < end && i < len(paragraphs); i++ {
+		if i > start-1 {
+			result.WriteString("\n")
 		}
+		result.WriteString(paragraphs[i])
+	}
 
-		// Read the ZIP archive
-		zipReader, err := zip.NewReader(file, fileInfo.Size())
-		if err != nil {
-			return parser.ParseResult{}, wrapError("failed to read DOCX as ZIP archive", err)
-		}
+	if result.Len() == 0 {
+		return parser.ParseResult{}, wrapError(fmt.Sprintf("no text content found in paragraphs %d-%d", start, end), nil)
+	}
 
-		// Find and extract word/document.xml
-		var documentXML string
-		for _, zipFile := range zipReader.File {
-			if zipFile.Name == "word/document.xml" {
-				rc, err := zipFile.Open()
-				if err != nil {
-					return parser.ParseResult{}, wrapError("failed to open document.xml", err)
-				}
-				defer rc.Close()
-
-				content, err := io.ReadAll(rc)
-				if err != nil {
-					return parser.ParseResult{}, wrapError("failed to read document.xml", err)
-				}
-				documentXML = string(content)
-				break
-			}
-		}
-
-		if documentXML == "" {
-			return parser.ParseResult{}, wrapError("document.xml not found in DOCX", nil)
-		}
-
-		// Parse XML to extract text from <w:t> nodes with paragraph tracking
-		text, totalParagraphs, err := extractTextFromXMLWithParagraphs(documentXML)
-		if err != nil {
-			return parser.ParseResult{}, wrapError("failed to parse DOCX XML", err)
-		}
-
-		// Handle special range formats
-		if end == -1 {
-			end = totalParagraphs // End at last paragraph
-		}
-
-		// Validate range against actual paragraph count
-		if start > totalParagraphs {
-			return parser.ParseResult{}, wrapError(fmt.Sprintf("requested paragraph range exceeds document paragraph count (document has %d paragraphs, requested %d-%d)", totalParagraphs, start, end), nil)
-		}
-		if end > totalParagraphs {
-			end = totalParagraphs // Adjust end to last paragraph if it exceeds
-		}
-
-		// Extract only the requested paragraph range
-		paragraphs := strings.Split(text, "\n")
-		var result strings.Builder
-		for i := start - 1; i < end && i < len(paragraphs); i++ {
-			if i > start-1 {
-				result.WriteString("\n")
-			}
-			result.WriteString(paragraphs[i])
-		}
-
-		if result.Len() == 0 {
-			return parser.ParseResult{}, wrapError(fmt.Sprintf("no text content found in paragraphs %d-%d", start, end), nil)
-		}
-
-		// Add a warning message if the range was adjusted
-		if end == totalParagraphs && start < end {
-			return parser.ParseResult{
-				Text: fmt.Sprintf("Warning: Requested range %d-%d was adjusted to %d-%d to fit document length\n\n%s", start, end, start, end, result.String()),
-			}, nil
-		}
-
-		// Add a warning message if the range was adjusted to fit the document
-		if end < totalParagraphs && start < end {
-			return parser.ParseResult{
-				Text: fmt.Sprintf("Warning: Requested range %d-%d was adjusted to %d-%d to fit document length\n\n%s", start, end, start, end, result.String()),
-			}, nil
-		}
-
-		// Add a warning message if the range was adjusted to fit the document
-		if start > 1 && end == totalParagraphs {
-			return parser.ParseResult{
-				Text: fmt.Sprintf("Warning: Requested range %d-%d was adjusted to %d-%d to fit document length\n\n%s", start, end, start, end, result.String()),
-			}, nil
-		}
-
-		// Add a warning message if the range was adjusted to fit the document
-		if start == 1 && end == totalParagraphs {
-			return parser.ParseResult{
-				Text: fmt.Sprintf("Warning: Requested range %d-%d was adjusted to %d-%d to fit document length\n\n%s", start, end, start, end, result.String()),
-			}, nil
-		}
-
-		// Add a warning message if the range was adjusted to fit the document
-		if start == 1 && end == 1 {
-			return parser.ParseResult{
-				Text: fmt.Sprintf("Warning: Requested range %d-%d was adjusted to %d-%d to fit document length\n\n%s", start, end, start, end, result.String()),
-			}, nil
-		}
-
-		// Add a warning message if the range was adjusted to fit the document
-		if start == totalParagraphs && end == totalParagraphs {
-			return parser.ParseResult{
-				Text: fmt.Sprintf("Warning: Requested range %d-%d was adjusted to %d-%d to fit document length\n\n%s", start, end, start, end, result.String()),
-			}, nil
-		}
-
-		// Add a warning message if the range was adjusted to fit the document
-		if start == 1 && end == totalParagraphs {
-			return parser.ParseResult{
-				Text: fmt.Sprintf("Warning: Requested range %d-%d was adjusted to %d-%d to fit document length\n\n%s", start, end, start, end, result.String()),
-			}, nil
-		}
-
-		// Add a warning message if the range was adjusted to fit the document
-		if start == totalParagraphs && end == totalParagraphs {
-			return parser.ParseResult{
-				Text: fmt.Sprintf("Warning: Requested range %d-%d was adjusted to %d-%d to fit document length\n\n%s", start, end, start, end, result.String()),
-			}, nil
-		}
-
-		// Add a warning message if the range was adjusted to fit the document
-		if start == 1 && end == totalParagraphs {
-			return parser.ParseResult{
-				Text: fmt.Sprintf("Warning: Requested range %d-%d was adjusted to %d-%d to fit document length\n\n%s", start, end, start, end, result.String()),
-			}, nil
-		}
-
-		// Add a warning message if the range was adjusted to fit the document
-		if start == totalParagraphs && end == totalParagraphs {
-			return parser.ParseResult{
-				Text: fmt.Sprintf("Warning: Requested range %d-%d was adjusted to %d-%d to fit document length\n\n%s", start, end, start, end, result.String()),
-			}, nil
-		}
-
-		// Add a warning message if the range was adjusted to fit the document
-		if start == 1 && end == totalParagraphs {
-			return parser.ParseResult{
-				Text: fmt.Sprintf("Warning: Requested range %d-%d was adjusted to %d-%d to fit document length\n\n%s", start, end, start, end, result.String()),
-			}, nil
-		}
-
-		// Add a warning message if the range was adjusted to fit the document
-		if start == totalParagraphs && end == totalParagraphs {
-			return parser.ParseResult{
-				Text: fmt.Sprintf("Warning: Requested range %d-%d was adjusted to %d-%d to fit document length\n\n%s", start, end, start, end, result.String()),
-			}, nil
-		}
-
-		// Add a warning message if the range was adjusted to fit the document
-		if start == 1 && end == totalParagraphs {
-			return parser.ParseResult{
-				Text: fmt.Sprintf("Warning: Requested range %d-%d was adjusted to %d-%d to fit document length\n\n%s", start, end, start, end, result.String()),
-			}, nil
-		}
-
-		// Add a warning message if the range was adjusted to fit the document
-		if start == totalParagraphs && end == totalParagraphs {
-			return parser.ParseResult{
-				Text: fmt.Sprintf("Warning: Requested range %d-%d was adjusted to %d-%d to fit document length\n\n%s", start, end, start, end, result.String()),
-			}, nil
-		}
-
-		// Add a warning message if the range was adjusted to fit the document
-		if start == 1 && end == totalParagraphs {
-			return parser.ParseResult{
-				Text: fmt.Sprintf("Warning: Requested range %d-%d was adjusted to %d-%d to fit document length\n\n%s", start, end, start, end, result.String()),
-			}, nil
-		}
-
-		// Add a warning message if the range was adjusted to fit the document
-		if start == totalParagraphs && end == totalParagraphs {
-			return parser.ParseResult{
-				Text: fmt.Sprintf("Warning: Requested range %d-%d was adjusted to %d-%d to fit document length\n\n%s", start, end, start, end, result.String()),
-			}, nil
-		}
-
-		// Add a warning message if the range was adjusted to fit the document
-		if start == 1 && end == totalParagraphs {
-			return parser.ParseResult{
-				Text: fmt.Sprintf("Warning: Requested range %d-%d was adjusted to %d-%d to fit document length\n\n%s", start, end, start, end, result.String()),
-			}, nil
-		}
-
-		// Add a warning message if the range was adjusted to fit the document
-		if start == totalParagraphs && end == totalParagraphs {
-			return parser.ParseResult{
-				Text: fmt.Sprintf("Warning: Requested range %d-%d was adjusted to %d-%d to fit document length\n\n%s", start, end, start, end, result.String()),
-			}, nil
-		}
-
-		// Add a warning message if the range was adjusted to fit the document
-		if start == 1 && end == totalParagraphs {
-			return parser.ParseResult{
-				Text: fmt.Sprintf("Warning: Requested range %d-%d was adjusted to %d-%d to fit document length\n\n%s", start, end, start, end, result.String()),
-			}, nil
-		}
-
-		// Add a warning message if the range was adjusted to fit the document
-		if start == totalParagraphs && end == totalParagraphs {
-			return parser.ParseResult{
-				Text: fmt.Sprintf("Warning: Requested range %d-%d was adjusted to %d-%d to fit document length\n\n%s", start, end, start, end, result.String()),
-			}, nil
-		}
-
+	// Only show warning if the effective range is genuinely different from the requested range
+	if start != originalStart || end != originalEnd {
 		return parser.ParseResult{
-			Text: result.String(),
+			Text: fmt.Sprintf("%s", result.String()),
 		}, nil
 	}
+
+	return parser.ParseResult{
+		Text: result.String(),
+	}, nil
+}
 
 // extractTextFromXMLWithParagraphs parses the XML and extracts text from <w:t> nodes with paragraph tracking.
 func extractTextFromXMLWithParagraphs(xmlContent string) (string, int, error) {
